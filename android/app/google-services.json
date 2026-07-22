@@ -1,0 +1,107 @@
+{
+  "project_info": {
+    "project_number": "789024692194",
+    "firebase_url": "https://fast-companion-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "fast-companion",
+    "storage_bucket": "fast-companion.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:789024692194:android:e81c38a92d2ea1f72c0bbb",
+        "android_client_info": {
+          "package_name": "com.example.notes_m"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "789024692194-3rkbqt2hchc21jbeeoe5c9ba9vpblard.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.notes_m",
+            "certificate_hash": "3170ee6f0df45646728b48d720d5fc8bfeea73fd"
+          }
+        },
+        {
+          "client_id": "789024692194-h3n39g26btsin23g5g0fo1d8bapirou4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.notes_m",
+            "certificate_hash": "00ba1611085efba0bf59413f5049518986ac75f8"
+          }
+        },
+        {
+          "client_id": "789024692194-n7ljctd8gv7vgs67kdbr2tjvr37uq1kl.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD_xkJ1zHdM9NpIUkz9TivPQF1kO1EgOk4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "789024692194-n7ljctd8gv7vgs67kdbr2tjvr37uq1kl.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "789024692194-pcn0jul1ore87ss81glq4edpq0hqq145.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.notesm"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:789024692194:android:5ab126c561cfa68b2c0bbb",
+        "android_client_info": {
+          "package_name": "com.mahad.fastcompanion"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "789024692194-h6vqc4uj8vefi8itm3haurj6lufo3dem.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mahad.fastcompanion",
+            "certificate_hash": "3170ee6f0df45646728b48d720d5fc8bfeea73fd"
+          }
+        },
+        {
+          "client_id": "789024692194-n7ljctd8gv7vgs67kdbr2tjvr37uq1kl.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD_xkJ1zHdM9NpIUkz9TivPQF1kO1EgOk4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "789024692194-n7ljctd8gv7vgs67kdbr2tjvr37uq1kl.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "789024692194-pcn0jul1ore87ss81glq4edpq0hqq145.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.notesm"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

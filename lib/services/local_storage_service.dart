@@ -1,0 +1,93 @@
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/note.dart';
+
+class LocalStorageService {
+  static const String _notesKeyPrefix = 'local_notes_';
+  static const String _accountsKey = 'saved_accounts';
+
+  static String _notesKey(String uid) => '$_notesKeyPrefix$uid';
+
+  // ================= NOTES =================
+
+  static Future<void> saveNotes(String uid, List<Note> notes) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final encoded = notes.map((note) => jsonEncode(note.toJson())).toList();
+
+    await prefs.setStringList(_notesKey(uid), encoded);
+  }
+
+  static Future<List<Note>> loadNotes(String uid) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final raw = prefs.getStringList(_notesKey(uid));
+
+      if (raw == null || raw.isEmpty) {
+        return [];
+      }
+
+      return raw
+          .map((e) => Note.fromJson(Map<String, dynamic>.from(jsonDecode(e))))
+          .toList();
+    } catch (e) {
+      print("Local cache read failed: $e");
+      return [];
+    }
+  }
+
+  static Future<void> upsertNote(String uid, Note note) async {
+    final notes = await loadNotes(uid);
+
+    final index = notes.indexWhere((n) => n.id == note.id);
+
+    if (index == -1) {
+      notes.add(note);
+    } else {
+      notes[index] = note;
+    }
+
+    await saveNotes(uid, notes);
+  }
+
+  static Future<void> deleteNote(String uid, String noteId) async {
+    final notes = await loadNotes(uid);
+
+    notes.removeWhere((n) => n.id == noteId);
+
+    await saveNotes(uid, notes);
+  }
+
+  static Future<void> clearNotes(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_notesKey(uid));
+  }
+
+  // ================= ACCOUNTS =================
+
+  static Future<void> saveAccounts(List<Map<String, String>> accounts) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final encoded = accounts.map((e) => jsonEncode(e)).toList();
+
+    await prefs.setStringList(_accountsKey, encoded);
+  }
+
+  static Future<List<Map<String, String>>> loadAccounts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final raw = prefs.getStringList(_accountsKey);
+
+      if (raw == null || raw.isEmpty) {
+        return [];
+      }
+
+      return raw.map((e) => Map<String, String>.from(jsonDecode(e))).toList();
+    } catch (e) {
+      print("Account cache read failed: $e");
+      return [];
+    }
+  }
+}
