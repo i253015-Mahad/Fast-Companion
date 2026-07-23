@@ -14,6 +14,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:fast_companion/services/database_service.dart';
 import 'package:fast_companion/services/local_storage_service.dart';
 import 'package:fast_companion/services/multi_account_auth_service.dart';
+import 'package:fast_companion/services/home_widget_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -376,6 +377,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _activeNotesUid ?? '',
     );
     if (mounted) setState(() => _localNotes = refreshed);
+    // Keeps the home screen widget's content up to date with zero extra
+    // wiring in EditNoteScreen/TodoScreen/etc — this fires after every
+    // edit, delete, and star toggle since they all call _refreshLocalNotes.
+    HomeWidgetService.syncIfNeeded(_activeNotesUid, refreshed);
   }
 
   void _addToAccountPool(Map<String, String> account) {

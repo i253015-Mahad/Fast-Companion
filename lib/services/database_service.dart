@@ -121,66 +121,89 @@ class DatabaseService {
   Future<void> syncFromFirebase({String? customUid}) async {
     final activeUid = customUid ?? uid;
     if (!_isSignedIn(activeUid)) return;
-    try {
-      final snapshot = await _databaseFor(activeUid)
-          .ref()
-          .child('users')
-          .child(activeUid)
-          .child('notes')
-          .orderByChild('timestamp')
-          .get();
-      if (!snapshot.exists || snapshot.value == null) return;
-      final raw = snapshot.value;
-      final List<Note> fetched = [];
-      void parse(dynamic key, dynamic value) {
-        if (value == null) return;
-        final m = Map<String, dynamic>.from(value as Map);
-        List<TodoItem> todoList = [];
-        if (m['todoList'] is List) {
-          todoList = (m['todoList'] as List).where((i) => i != null).map((i) {
-            final t = Map<String, dynamic>.from(i as Map);
-            return TodoItem(
-              text: t['text'] ?? '',
-              isDone: t['isDone'] ?? false,
-              dueDateTime: t['dueDateTime'] != null
-                  ? DateTime.tryParse(t['dueDateTime'])
-                  : null,
-              remainingDuration: t['remainingDurationMs'] != null
-                  ? Duration(milliseconds: t['remainingDurationMs'])
-                  : null,
-            );
-          }).toList();
-        }
-        List<CounterItem> counterList = [];
-        if (m['counterList'] is List) {
-          counterList = (m['counterList'] as List).where((i) => i != null).map((
-            i,
-          ) {
-            final c = Map<String, dynamic>.from(i as Map);
-            return CounterItem(label: c['label'] ?? '', count: c['count'] ?? 0);
-          }).toList();
-        }
-        fetched.add(
-          Note(
-            id: key.toString(),
-            title: m['title'] ?? '',
-            body: m['body'] ?? '',
-            isStarred: m['isStarred'] ?? false,
-            type: m['type'] ?? 'text',
-            todoList: todoList,
-            counterList: counterList,
-          ),
-        );
-      }
 
-      if (raw is Map) {
-        raw.forEach(parse);
-      } else if (raw is List) {
-        for (int i = 0; i < raw.length; i++) parse(i, raw[i]);
+    // Right after a fresh sign-in, FirebaseAuth has the token but the
+    // Realtime Database connection can take a moment to attach it — a read
+    // in that gap gets rejected by security rules even though the user
+    // really is signed in. Retrying a few times, a little further apart
+    // each time, covers that window without retrying forever.
+    const maxAttempts = 4;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        final snapshot = await _databaseFor(activeUid)
+            .ref()
+            .child('users')
+            .child(activeUid)
+            .child('notes')
+            .get(); // no orderByChild — avoids requiring a ".indexOn" rule
+        if (!snapshot.exists || snapshot.value == null) return;
+        final raw = snapshot.value;
+        final List<MapEntry<num, Note>> fetchedWithTime = [];
+        void parse(dynamic key, dynamic value) {
+          if (value == null) return;
+          final m = Map<String, dynamic>.from(value as Map);
+          List<TodoItem> todoList = [];
+          if (m['todoList'] is List) {
+            todoList = (m['todoList'] as List).where((i) => i != null).map((
+              i,
+            ) {
+              final t = Map<String, dynamic>.from(i as Map);
+              return TodoItem(
+                text: t['text'] ?? '',
+                isDone: t['isDone'] ?? false,
+                dueDateTime: t['dueDateTime'] != null
+                    ? DateTime.tryParse(t['dueDateTime'])
+                    : null,
+                remainingDuration: t['remainingDurationMs'] != null
+                    ? Duration(milliseconds: t['remainingDurationMs'])
+                    : null,
+              );
+            }).toList();
+          }
+          List<CounterItem> counterList = [];
+          if (m['counterList'] is List) {
+            counterList = (m['counterList'] as List)
+                .where((i) => i != null)
+                .map((i) {
+                  final c = Map<String, dynamic>.from(i as Map);
+                  return CounterItem(
+                    label: c['label'] ?? '',
+                    count: c['count'] ?? 0,
+                  );
+                })
+                .toList();
+          }
+          final ts = m['timestamp'];
+          fetchedWithTime.add(
+            MapEntry(
+              ts is num ? ts : 0,
+              Note(
+                id: key.toString(),
+                title: m['title'] ?? '',
+                body: m['body'] ?? '',
+                isStarred: m['isStarred'] ?? false,
+                type: m['type'] ?? 'text',
+                todoList: todoList,
+                counterList: counterList,
+              ),
+            ),
+          );
+        }
+
+        if (raw is Map) {
+          raw.forEach(parse);
+        } else if (raw is List) {
+          for (int i = 0; i < raw.length; i++) parse(i, raw[i]);
+        }
+        fetchedWithTime.sort((a, b) => a.key.compareTo(b.key));
+        final fetched = fetchedWithTime.map((e) => e.value).toList();
+        await LocalStorageService.saveNotes(activeUid, fetched);
+        return; // success — stop retrying
+      } catch (e) {
+        print('⚠️ syncFromFirebase attempt $attempt failed: $e');
+        if (attempt == maxAttempts) return;
+        await Future.delayed(Duration(milliseconds: 400 * attempt));
       }
-      await LocalStorageService.saveNotes(activeUid, fetched);
-    } catch (e) {
-      print('⚠️ syncFromFirebase failed (offline?): $e');
     }
   }
 

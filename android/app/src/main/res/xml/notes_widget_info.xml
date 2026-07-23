@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  android:configure points to the Activity Android launches automatically
+  when the widget is dropped on the home screen (see
+  NotesWidgetConfigureActivity.kt). Replace PACKAGE_NAME_GOES_HERE with
+  your real applicationId, same as in the Kotlin files.
+
+  Both the newer (targetCellWidth/Height, maxResizeWidth/Height, API 31+)
+  and older (minResizeWidth/Height) resize attributes are set, since some
+  launchers (Samsung One UI, MIUI, etc.) only honor the older ones — this
+  is what was blocking horizontal resizing before.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:configure="com.mahad.fastcompanion.NotesWidgetConfigureActivity"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="110dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:maxResizeWidth="300dp"
+    android:maxResizeHeight="300dp"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:initialLayout="@layout/notes_widget_layout_medium"
+    android:updatePeriodMillis="0"
+    android:previewImage="@mipmap/ic_launcher" />

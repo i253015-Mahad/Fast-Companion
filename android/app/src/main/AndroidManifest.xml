@@ -27,6 +27,28 @@
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+
+        <activity
+             android:name=".NotesWidgetConfigureActivity"
+             android:exported="true"
+             android:theme="@style/LaunchTheme">
+            <intent-filter>
+                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+        <receiver
+             android:name=".NotesWidgetProvider"
+             android:exported="false">
+
+            <intent-filter>
+                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+             <meta-data
+                 android:name="android.appwidget.provider"
+                 android:resource="@xml/notes_widget_info" />
+        </receiver>
+             
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

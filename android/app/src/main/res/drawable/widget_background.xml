@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  TODO: replace #FF2A2A2E with the actual hex value of AppColors.navBar
+  from lib/theme/app_colors.dart so the widget matches your app exactly.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#083C2E" />
+    <corners android:radius="20dp" />
+</shape>
