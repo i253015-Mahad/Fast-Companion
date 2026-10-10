@@ -21,6 +21,7 @@ class LocalStorageService {
   static Future<List<Note>> loadNotes(String uid) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
 
       final raw = prefs.getStringList(_notesKey(uid));
 
@@ -77,6 +78,7 @@ class LocalStorageService {
   static Future<List<Map<String, String>>> loadAccounts() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
 
       final raw = prefs.getStringList(_accountsKey);
 

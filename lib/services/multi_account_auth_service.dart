@@ -51,22 +51,47 @@ class MultiAccountAuthService {
 
   bool get hasAnySession => _sessions.isNotEmpty;
 
+  // CHANGED (Fix 3c): concurrent callers (HomeScreen + the widget deep link)
+  // now share ONE run instead of racing to create the same FirebaseApp.
+  Future<void>? _restoreInFlight;
+
   /// Call once on startup with whatever accounts you have cached locally
   /// (e.g. from LocalStorageService.loadAccounts()). Re-creates each
   /// account's secondary FirebaseApp and waits briefly for its persisted
   /// Auth session to rehydrate, so switching is instant from cold start too.
-  Future<void> restoreSessions(List<Map<String, String>> savedAccounts) async {
+  ///
+  /// [authTimeout] defaults to the original 3 seconds. The widget's headless
+  /// engine passes a longer one because a cold engine can be slower.
+  Future<void> restoreSessions(
+    List<Map<String, String>> savedAccounts, {
+    Duration authTimeout = const Duration(seconds: 3),
+  }) {
+    final running = _restoreInFlight;
+    if (running != null) return running;
+    final future = _restoreSessions(
+      savedAccounts,
+      authTimeout,
+    ).whenComplete(() => _restoreInFlight = null);
+    _restoreInFlight = future;
+    return future;
+  }
+
+  Future<void> _restoreSessions(
+    List<Map<String, String>> savedAccounts,
+    Duration authTimeout,
+  ) async {
     for (final acc in savedAccounts) {
       final uid = acc['uid'];
       if (uid == null || uid.isEmpty || _sessions.containsKey(uid)) continue;
       try {
         final app = await _appForUid(uid);
         final auth = FirebaseAuth.instanceFor(app: app);
-        final user = auth.currentUser ??
+        final user =
+            auth.currentUser ??
             await auth.authStateChanges().first.timeout(
-                  const Duration(seconds: 3),
-                  onTimeout: () => auth.currentUser,
-                );
+              authTimeout,
+              onTimeout: () => auth.currentUser,
+            );
         if (user != null) {
           _register(app, auth, user, fallback: acc);
         }
@@ -106,12 +131,14 @@ class MultiAccountAuthService {
   /// (no duplicate apps).
   Future<AccountSession?> addAccount() async {
     await GoogleSignIn.instance.signOut();
-    final GoogleSignInAccount pickedUser =
-        await GoogleSignIn.instance.authenticate();
+    final GoogleSignInAccount pickedUser = await GoogleSignIn.instance
+        .authenticate();
     final GoogleSignInAuthentication googleAuth =
         await pickedUser.authentication;
-    final clientAuth = await pickedUser.authorizationClient
-        .authorizeScopes(['email', 'profile']);
+    final clientAuth = await pickedUser.authorizationClient.authorizeScopes([
+      'email',
+      'profile',
+    ]);
     final AuthCredential credential = GoogleAuthProvider.credential(
       idToken: googleAuth.idToken,
       accessToken: clientAuth.accessToken,

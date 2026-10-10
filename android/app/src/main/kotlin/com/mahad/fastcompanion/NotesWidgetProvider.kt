@@ -1,7 +1,3 @@
-// TODO: move this file to match your actual package, e.g. if your
-// applicationId is "com.mahad.fastcompanion", this file belongs at:
-//   android/app/src/main/kotlin/com/mahad/fastcompanion/NotesWidgetProvider.kt
-// and the package line below must match exactly (same as MainActivity.kt).
 package com.mahad.fastcompanion
 
 import com.mahad.fastcompanion.R
@@ -12,6 +8,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.StrikethroughSpan
 import android.view.View
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetBackgroundIntent
@@ -45,6 +44,14 @@ class NotesWidgetProvider : AppWidgetProvider() {
         updateWidget(context, appWidgetManager, appWidgetId)
     }
 
+    // NEW (Fix 4e): remove a deleted widget's stored note so data doesn't
+    // pile up. The Dart side prunes ids whose payload is gone.
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        val editor = HomeWidgetPlugin.getData(context).edit()
+        for (id in appWidgetIds) editor.remove("payload_$id")
+        editor.apply()
+    }
+
     private fun updateWidget(
         context: Context,
         appWidgetManager: AppWidgetManager,
@@ -66,15 +73,18 @@ class NotesWidgetProvider : AppWidgetProvider() {
                 views.setViewVisibility(getCounterRowId(context, i), View.GONE)
             }
 
+            // CHANGED (Fix 4e): each widget reads ITS OWN note ("payload_<id>").
             val prefs = HomeWidgetPlugin.getData(context)
-            val payloadStr = prefs.getString("pinned_payload", null)
+            val payloadStr = prefs.getString("payload_$appWidgetId", null)
 
-            if (payloadStr == null) {
+            // CHANGED (Fix 4e): also treat "" (deleted note / signed out) as
+            // empty. JSONObject("") would throw and freeze the widget.
+            if (payloadStr.isNullOrEmpty()) {
                 views.setTextViewText(R.id.widget_title, "No note pinned")
                 views.setViewVisibility(R.id.btn_edit, View.GONE)
                 views.setTextViewText(
                     R.id.row_text,
-                    "Add the widget again, or open the app and re-pin a note."
+                    "This note was deleted or its account was signed out. Long-press a note in the app to pin another."
                 )
                 views.setViewVisibility(R.id.row_text, View.VISIBLE)
                 appWidgetManager.updateAppWidget(appWidgetId, views)
@@ -108,15 +118,33 @@ class NotesWidgetProvider : AppWidgetProvider() {
                     for (i in 0 until shown) {
                         val item = items.getJSONObject(i)
                         views.setViewVisibility(getTodoRowId(context, i), View.VISIBLE)
-                        views.setTextViewText(getTodoTextId(context, i), item.optString("text"))
 
+                        // NEW (Fix 9): strike through + dim ticked items.
                         val isDone = item.optBoolean("isDone", false)
+                        val text = item.optString("text")
+                        val styled = SpannableString(text)
+                        if (isDone && text.isNotEmpty()) {
+                            styled.setSpan(
+                                StrikethroughSpan(),
+                                0,
+                                text.length,
+                                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                            )
+                        }
+                        views.setTextViewText(getTodoTextId(context, i), styled)
+                        views.setTextColor(
+                            getTodoTextId(context, i),
+                            if (isDone) 0x80FFFFFF.toInt() else 0xFFFFFFFF.toInt()
+                        )
+
                         views.setImageViewResource(
                             getTodoCheckId(context, i),
                             if (isDone) R.drawable.ic_checkbox_checked else R.drawable.ic_checkbox_unchecked
                         )
 
-                        val meta = if (item.isNull("meta")) "" else item.optString("meta", "")
+                        // CHANGED (Fix 8): countdown text is computed NOW,
+                        // from raw timestamps, instead of a stale saved string.
+                        val meta = formatMeta(item)
                         if (meta.isNotEmpty()) {
                             views.setTextViewText(getTodoMetaId(context, i), meta)
                             views.setViewVisibility(getTodoMetaId(context, i), View.VISIBLE)
@@ -223,10 +251,34 @@ class NotesWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    // NEW (Fix 8): builds "Due in 2h 5m" / "Overdue by 10m" / "45m left" at
+    // draw time from the raw timestamps the Dart side saved.
+    private fun formatMeta(item: JSONObject): String {
+        val isDone = item.optBoolean("isDone", false)
+        // Ticked items show their frozen remaining time (matches the app).
+        if (isDone && !item.isNull("remainingMs")) {
+            return "${formatDuration(item.getLong("remainingMs"))} left"
+        }
+        if (!item.isNull("dueMs")) {
+            val diff = item.getLong("dueMs") - System.currentTimeMillis()
+            return if (diff < 0) "Overdue by ${formatDuration(-diff)}"
+            else "Due in ${formatDuration(diff)}"
+        }
+        if (!item.isNull("remainingMs")) {
+            return "${formatDuration(item.getLong("remainingMs"))} left"
+        }
+        return ""
+    }
+
+    private fun formatDuration(ms: Long): String {
+        val totalMinutes = ms / 60000
+        val h = totalMinutes / 60
+        val m = totalMinutes % 60
+        return if (h > 0) "${h}h ${m}m" else "${m}m"
+    }
+
     // Helpers mapping index -> the fixed resource ids declared in XML
     // (row_todo_0, check_0, text_0, meta_0, row_counter_0, label_0, ...).
-    // Using getIdentifier() here avoids hand-writing a 13-branch `when` for
-    // each of the ~65 generated view ids.
     private fun idFor(context: Context, name: String): Int {
         return context.resources.getIdentifier(name, "id", context.packageName)
     }

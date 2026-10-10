@@ -11,6 +11,9 @@ class NoteCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onStarToggled;
 
+  /// NEW (Fix 7a): long-press a card to pin it to a home screen widget.
+  final VoidCallback? onPin;
+
   const NoteCard({
     super.key,
     required this.color,
@@ -18,12 +21,14 @@ class NoteCard extends StatelessWidget {
     required this.onDelete,
     required this.onTap,
     required this.onStarToggled,
+    this.onPin,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onPin, // NEW (Fix 7a)
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -40,13 +45,15 @@ class NoteCard extends StatelessWidget {
                 // TOP LEFT: Star Priority Button
                 IconButton(
                   icon: Icon(
-                    note.isStarred ? Icons.star_rounded : Icons.star_outline_rounded,
+                    note.isStarred
+                        ? Icons.star_rounded
+                        : Icons.star_outline_rounded,
                     // Golden amber when selected, subtle dark tint when unselected to match your layout style
-                    color: note.isStarred ? Colors.amber : Colors.black45, 
+                    color: note.isStarred ? Colors.amber : Colors.black45,
                   ),
                   onPressed: onStarToggled, // Passed down from constructor
                 ),
-                
+
                 // TOP RIGHT: Your Existing Delete Button
                 IconButton(
                   icon: const Icon(Icons.delete, color: Colors.black54),
@@ -54,7 +61,7 @@ class NoteCard extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             // Note Title
             Text(
               note.title.isEmpty ? "Untitled" : note.title,
@@ -63,11 +70,9 @@ class NoteCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 10),
-            
+
             // Previews Block
-            Expanded(
-              child: _buildCardContentBody(),
-            ),
+            Expanded(child: _buildCardContentBody()),
           ],
         ),
       ),

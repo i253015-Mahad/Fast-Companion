@@ -7,10 +7,10 @@
 //
 // Flow: Firebase init -> restore account sessions -> if >1 account, ask
 // which one -> show that account's notes -> user taps one -> save it as
-// the pinned note -> tell the native activity we're done (so it can
-// setResult(RESULT_OK) and finish, letting Android actually place the
-// widget). Backing out at any point leaves the result as CANCELED
-// (set natively) and Android discards the widget placement — same as Keep.
+// the pinned note FOR THIS WIDGET ID -> tell the native activity we're done
+// (so it can setResult(RESULT_OK) and finish, letting Android actually place
+// the widget). Backing out at any point leaves the result as CANCELED
+// (set natively) and Android discards the widget placement.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,9 +26,8 @@ import 'services/home_widget_service.dart';
 const MethodChannel _configChannel = MethodChannel('notes_widget_configure');
 
 // Called from the tiny `widgetConfigureMain()` wrapper that must live in
-// main.dart itself (see instructions) — Flutter's entrypoint mechanism
-// only resolves top-level functions that live in the root library
-// (lib/main.dart), not ones imported from elsewhere.
+// main.dart itself — Flutter's entrypoint mechanism only resolves top-level
+// functions that live in the root library (lib/main.dart).
 void runWidgetConfigureApp() {
   runApp(const WidgetConfigureApp());
 }
@@ -69,7 +68,9 @@ class _WidgetConfigureFlowState extends State<_WidgetConfigureFlow> {
 
   Future<void> _init() async {
     try {
-      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
       final accounts = await LocalStorageService.loadAccounts();
       await MultiAccountAuthService.instance.restoreSessions(accounts);
 
@@ -77,7 +78,8 @@ class _WidgetConfigureFlowState extends State<_WidgetConfigureFlow> {
 
       if (accounts.isEmpty) {
         setState(() {
-          _error = "No signed-in accounts found.\nOpen the app and sign in first.";
+          _error =
+              "No signed-in accounts found.\nOpen the app and sign in first.";
           _step = _Step.error;
         });
         return;
@@ -111,11 +113,21 @@ class _WidgetConfigureFlowState extends State<_WidgetConfigureFlow> {
     });
   }
 
+  // CHANGED (Fix 4c): pin to THIS widget's id instead of one global slot.
   Future<void> _selectNote(Note note) async {
-    await HomeWidgetService.pinNote(_selectedUid!, note);
+    final widgetId = await _configChannel.invokeMethod<int>('getWidgetId');
+    if (widgetId == null || widgetId == 0) {
+      // 0 == AppWidgetManager.INVALID_APPWIDGET_ID
+      if (!mounted) return;
+      setState(() {
+        _error = "Couldn't identify this widget.\nRemove it and try again.";
+        _step = _Step.error;
+      });
+      return;
+    }
+    await HomeWidgetService.pinNote(widgetId, _selectedUid!, note);
     // Signal the native Activity to finish with RESULT_OK. Android then
-    // actually places the widget and immediately calls the provider's
-    // onUpdate for it, which reads the data we just saved.
+    // actually places the widget.
     await _configChannel.invokeMethod('configComplete');
   }
 
@@ -178,8 +190,9 @@ class _WidgetConfigureFlowState extends State<_WidgetConfigureFlow> {
                       ),
                       leading: CircleAvatar(
                         backgroundColor: AppColors.cardOrange,
-                        backgroundImage:
-                            photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+                        backgroundImage: photoUrl.isNotEmpty
+                            ? NetworkImage(photoUrl)
+                            : null,
                         child: photoUrl.isEmpty
                             ? Text(
                                 (acc['name'] ?? '?').isNotEmpty

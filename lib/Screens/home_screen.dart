@@ -233,6 +233,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       (acc) => acc['uid'] == signedOutUid,
                     );
                     await LocalStorageService.saveAccounts(_accountPool);
+                    await HomeWidgetService.clearForUid(signedOutUid);
                   }
 
                   if (!mounted) return;
@@ -417,6 +418,57 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Long-press a note card to pin it to a home screen widget.
+  Future<void> _pinToWidget(Note note) async {
+    final uid = _activeNotesUid;
+    if (uid == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    final widgets = await HomeWidgetService.widgetSummaries();
+    if (!mounted) return;
+    if (widgets.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Add the Notes widget to your home screen first.'),
+        ),
+      );
+      return;
+    }
+
+    final int? targetId = widgets.length == 1
+        ? widgets.first.id
+        : await showDialog<int>(
+            context: context,
+            builder: (ctx) => SimpleDialog(
+              backgroundColor: AppColors.navBar,
+              title: const Text(
+                'Show on which widget?',
+                style: TextStyle(color: Colors.white),
+              ),
+              children: [
+                for (final w in widgets)
+                  SimpleDialogOption(
+                    onPressed: () => Navigator.pop(ctx, w.id),
+                    child: Text(
+                      'Currently: ${w.title}',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ),
+              ],
+            ),
+          );
+    if (targetId == null) return;
+
+    await HomeWidgetService.pinNote(targetId, uid, note);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          '"${note.title.isEmpty ? 'Untitled' : note.title}" pinned to widget',
+        ),
+      ),
+    );
+  }
+
   Widget _buildNotesGrid(List<Note> listToRender, int colorOffset) {
     return GridView.builder(
       shrinkWrap: true,
@@ -450,6 +502,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               await _refreshLocalNotes();
             }
           },
+          onPin: () => _pinToWidget(note),
           onTap: () {
             openAndEditNote(note);
           },

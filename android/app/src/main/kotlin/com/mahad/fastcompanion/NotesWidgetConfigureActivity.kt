@@ -1,6 +1,3 @@
-// TODO: same package-name/path fix as NotesWidgetProvider.kt — move this
-// file into android/app/src/main/kotlin/<your/package/path>/ and change
-// the line below to your real applicationId.
 package com.mahad.fastcompanion
 
 import android.app.Activity
@@ -14,10 +11,9 @@ import io.flutter.plugin.common.MethodChannel
 /**
  * Android launches this automatically the instant the user drops the
  * widget onto their home screen (before it's actually placed) — this is
- * what makes the account/note picker "just appear," the same way Keep's
- * widget setup works. It runs a SEPARATE Flutter entry point
- * (widgetConfigureMain, in lib/widget_config_main.dart), not your normal
- * app UI.
+ * what makes the account/note picker "just appear". It runs a SEPARATE
+ * Flutter entry point (widgetConfigureMain, in lib/widget_config_main.dart),
+ * not your normal app UI.
  */
 class NotesWidgetConfigureActivity : FlutterActivity() {
 
@@ -35,8 +31,7 @@ class NotesWidgetConfigureActivity : FlutterActivity() {
         ) ?: AppWidgetManager.INVALID_APPWIDGET_ID
 
         // Default to CANCELED so that backing out of the picker (without
-        // choosing a note) makes Android discard the widget placement —
-        // matches Keep's behavior.
+        // choosing a note) makes Android discard the widget placement.
         setResult(
             Activity.RESULT_CANCELED,
             Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
@@ -51,15 +46,18 @@ class NotesWidgetConfigureActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
-                if (call.method == "configComplete") {
-                    setResult(
-                        Activity.RESULT_OK,
-                        Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                    )
-                    result.success(null)
-                    finish()
-                } else {
-                    result.notImplemented()
+                when (call.method) {
+                    // NEW (Fix 4b): lets Dart pin the note to THIS widget.
+                    "getWidgetId" -> result.success(appWidgetId)
+                    "configComplete" -> {
+                        setResult(
+                            Activity.RESULT_OK,
+                            Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                        )
+                        result.success(null)
+                        finish()
+                    }
+                    else -> result.notImplemented()
                 }
             }
     }

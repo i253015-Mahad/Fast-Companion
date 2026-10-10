@@ -3,6 +3,10 @@
   Widened resize bounds so the widget can go from small up to a large
   4x3/3x4+ size in either direction. android:configure launches the
   account/note picker automatically when placed.
+
+  updatePeriodMillis is 30 minutes (1800000). Android enforces that as the
+  minimum, so the "Due in..." text refreshes about twice an hour, plus on
+  every tap, resize and in-app edit.
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:configure="com.mahad.fastcompanion.NotesWidgetConfigureActivity"
@@ -17,5 +21,5 @@
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:initialLayout="@layout/notes_widget_layout"
-    android:updatePeriodMillis="0"
+    android:updatePeriodMillis="1800000"
     android:previewImage="@mipmap/ic_launcher" />

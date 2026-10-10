@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import '../models/note.dart';
 import 'local_storage_service.dart';
 import 'multi_account_auth_service.dart';
+import 'home_widget_service.dart';
 
 class DatabaseService {
   // Fallback used only when there's no per-account session for the uid in
@@ -67,12 +68,9 @@ class DatabaseService {
       return localKey;
     }
 
-    final newNoteRef = _databaseFor(targetUid)
-        .ref()
-        .child('users')
-        .child(targetUid)
-        .child('notes')
-        .push();
+    final newNoteRef = _databaseFor(
+      targetUid,
+    ).ref().child('users').child(targetUid).child('notes').push();
 
     // Do NOT await this. When offline, Firebase queues the write locally
     // but its Future only completes once the server acknowledges it —
@@ -144,9 +142,7 @@ class DatabaseService {
           final m = Map<String, dynamic>.from(value as Map);
           List<TodoItem> todoList = [];
           if (m['todoList'] is List) {
-            todoList = (m['todoList'] as List).where((i) => i != null).map((
-              i,
-            ) {
+            todoList = (m['todoList'] as List).where((i) => i != null).map((i) {
               final t = Map<String, dynamic>.from(i as Map);
               return TodoItem(
                 text: t['text'] ?? '',
@@ -241,6 +237,11 @@ class DatabaseService {
       );
       localNotes[idx] = updated;
       await LocalStorageService.saveNotes(targetUid, localNotes);
+      try {
+        await HomeWidgetService.refreshNote(targetUid, updated);
+      } catch (e) {
+        print('⚠️ widget refresh after save failed: $e');
+      }
     }
 
     final remoteWrite = _databaseFor(targetUid)
@@ -308,7 +309,9 @@ class DatabaseService {
         .update({'isStarred': newStatus})
         .timeout(const Duration(seconds: 15))
         .catchError((e) {
-          print("⚠️ Firebase star toggle failed/queued, local cache updated: $e");
+          print(
+            "⚠️ Firebase star toggle failed/queued, local cache updated: $e",
+          );
         });
   }
 
@@ -329,7 +332,9 @@ class DatabaseService {
         .remove()
         .timeout(const Duration(seconds: 15))
         .catchError((e) {
-          print("⚠️ Firebase delete failed/queued, removed from local cache: $e");
+          print(
+            "⚠️ Firebase delete failed/queued, removed from local cache: $e",
+          );
         });
   }
 
