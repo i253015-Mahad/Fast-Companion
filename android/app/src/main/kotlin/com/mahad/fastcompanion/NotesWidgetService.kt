@@ -165,10 +165,7 @@ private class NotesWidgetFactory(
             styled.setSpan(StrikethroughSpan(), 0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         views.setTextViewText(R.id.item_text, styled)
-        views.setTextColor(
-            R.id.item_text,
-            if (isDone) 0x80FFFFFF.toInt() else 0xFFFFFFFF.toInt()
-        )
+        views.setFloat(R.id.item_text, "setAlpha", if (isDone) 0.5f else 1.0f)
         views.setImageViewResource(
             R.id.item_check,
             if (isDone) R.drawable.ic_checkbox_checked else R.drawable.ic_checkbox_unchecked

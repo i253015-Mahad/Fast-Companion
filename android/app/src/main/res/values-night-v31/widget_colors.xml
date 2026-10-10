@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ in DARK mode: a deep shade of the phone's theme color.
+     Phones older than Android 12 use values-night/widget_colors.xml instead. -->
+<resources>
+    <color name="widget_bg">@android:color/system_accent1_800</color>
+    <color name="widget_text">@android:color/system_accent1_50</color>
+    <color name="widget_text_dim">@android:color/system_accent1_200</color>
+    <color name="widget_divider">@android:color/system_accent1_600</color>
+    <color name="widget_accent">@android:color/system_accent1_200</color>
+    <color name="widget_icon">@android:color/system_accent1_50</color>
+    <color name="widget_icon_dim">@android:color/system_accent1_300</color>
+    <color name="widget_button_bg">@android:color/system_accent1_700</color>
+</resources>

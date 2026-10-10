@@ -14,7 +14,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:textColor="#FFFFFFFF"
+        android:textColor="@color/widget_text"
         android:textSize="17sp"
         android:maxLines="2" />
 
@@ -31,7 +31,7 @@
         android:layout_width="36dp"
         android:layout_height="wrap_content"
         android:gravity="center"
-        android:textColor="#FFFFFFFF"
+        android:textColor="@color/widget_text"
         android:textSize="15sp"
         android:textStyle="bold" />
 
@@ -40,6 +40,6 @@
         android:layout_width="30dp"
         android:layout_height="30dp"
         android:background="@drawable/widget_round_button"
-        android:src="@android:drawable/ic_input_add"
+        android:src="@drawable/ic_plus"
         android:contentDescription="Increase" />
 </LinearLayout>

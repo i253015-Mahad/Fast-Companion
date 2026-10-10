@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ in LIGHT mode: the widget is tinted with the phone's theme
+     color (the "accent1" palette generated from the wallpaper / chosen color).
+     Purple phone -> purple widget, green -> green, red -> red, and so on.
+     Phones older than Android 12 use values/widget_colors.xml instead. -->
+<resources>
+    <color name="widget_bg">@android:color/system_accent1_100</color>
+    <color name="widget_text">@android:color/system_accent1_900</color>
+    <color name="widget_text_dim">@android:color/system_accent1_700</color>
+    <color name="widget_divider">@android:color/system_accent1_300</color>
+    <color name="widget_accent">@android:color/system_accent1_700</color>
+    <color name="widget_icon">@android:color/system_accent1_900</color>
+    <color name="widget_icon_dim">@android:color/system_accent1_700</color>
+    <color name="widget_button_bg">@android:color/system_accent1_200</color>
+</resources>

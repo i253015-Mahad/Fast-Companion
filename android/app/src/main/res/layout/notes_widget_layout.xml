@@ -29,7 +29,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="No note pinned"
-            android:textColor="#FFFFFF"
+            android:textColor= "@color/widget_text"
             android:textSize="22sp"
             android:textStyle="bold"
             android:gravity="center"
@@ -42,7 +42,7 @@
             android:layout_width="32dp"
             android:layout_height="32dp"
             android:background="@android:color/transparent"
-            android:src="@android:drawable/ic_menu_edit"
+            android:src="@drawable/ic_edit"
             android:contentDescription="Edit note" />
     </LinearLayout>
 
@@ -51,7 +51,7 @@
         android:layout_height="1dp"
         android:layout_marginTop="8dp"
         android:layout_marginBottom="8dp"
-        android:background="#22FFFFFF" />
+        android:background="@color/widget_divider" />
 
     <!-- Plain text notes / placeholder message -->
     <TextView
@@ -59,7 +59,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="4dp"
-        android:textColor="#CCFFFFFF"
+        android:textColor="@color/widget_text_dim"
         android:textSize="15sp"
         android:maxLines="20"
         android:visibility="gone" />

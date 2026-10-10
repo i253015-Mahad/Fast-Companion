@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget colors when the phone is in LIGHT mode.
+     The dark-mode versions are in values-night/widget_colors.xml. -->
+<resources>
+    <color name="widget_bg">#F8F3E8</color>          <!-- widget background (your app's cream card color) -->
+    <color name="widget_text">#1A1A1A</color>        <!-- title and task text -->
+    <color name="widget_text_dim">#99000000</color>  <!-- secondary text, "x checked items" -->
+    <color name="widget_divider">#1F000000</color>   <!-- thin line under the title -->
+    <color name="widget_accent">#C2571A</color>      <!-- countdown text and ticked checkbox -->
+    <color name="widget_icon">#1A1A1A</color>        <!-- plus, minus, edit pencil -->
+    <color name="widget_icon_dim">#99000000</color>  <!-- empty checkbox, arrow -->
+    <color name="widget_button_bg">#1F000000</color> <!-- round + / - button background -->
+</resources>

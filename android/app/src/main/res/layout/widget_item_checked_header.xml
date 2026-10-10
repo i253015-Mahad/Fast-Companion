@@ -22,7 +22,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:textColor="#B3FFFFFF"
+        android:textColor="@color/widget_text_dim"
         android:textSize="14sp"
         android:textStyle="bold"
         android:maxLines="1" />
