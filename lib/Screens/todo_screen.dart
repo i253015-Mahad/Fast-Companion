@@ -5,6 +5,7 @@ import '../models/note.dart';
 import '../theme/app_colors.dart';
 import '../services/database_service.dart';
 import '../services/local_storage_service.dart';
+import '../widgets/checked_items_header.dart'; // NEW
 
 class TodoScreen extends StatefulWidget {
   final Note note;
@@ -19,10 +20,16 @@ class TodoScreen extends StatefulWidget {
 }
 
 class _TodoScreenState extends State<TodoScreen> {
+  // NEW: set to true if you'd rather checked items start out visible.
+  static const bool _checkedExpandedByDefault = false;
+
   late TextEditingController _titleController;
   late List<TodoItem> _todoItems;
   final List<FocusNode> _focusNodes = [];
   final _db = DatabaseService();
+
+  // NEW: arrow UP = checked items hidden, arrow DOWN = shown.
+  bool _checkedExpanded = _checkedExpandedByDefault;
 
   @override
   void initState() {
@@ -31,6 +38,7 @@ class _TodoScreenState extends State<TodoScreen> {
     _todoItems = List.from(widget.note.todoList ?? []);
     if (_todoItems.isEmpty) _todoItems.add(TodoItem(text: ""));
     for (var _ in _todoItems) _focusNodes.add(FocusNode());
+    _regroup(); // NEW
     // The Note object this screen was built with can be stale — e.g. the
     // widget checked off an item after this note was last loaded into
     // whatever list handed it to us. _save() overwrites the whole
@@ -60,6 +68,7 @@ class _TodoScreenState extends State<TodoScreen> {
       _focusNodes
         ..clear()
         ..addAll(List.generate(_todoItems.length, (_) => FocusNode()));
+      _regroup(); // NEW
     });
   }
 
@@ -68,6 +77,29 @@ class _TodoScreenState extends State<TodoScreen> {
     _titleController.dispose();
     for (var f in _focusNodes) f.dispose();
     super.dispose();
+  }
+
+  /// NEW: keeps the list as [unchecked..., checked...], preserving the
+  /// relative order inside each group. Focus nodes move together with their
+  /// items so they stay lined up. Call inside setState.
+  void _regroup() {
+    final order = <int>[
+      for (var i = 0; i < _todoItems.length; i++)
+        if (!_todoItems[i].isDone) i,
+      for (var i = 0; i < _todoItems.length; i++)
+        if (_todoItems[i].isDone) i,
+    ];
+    final items = [for (final i in order) _todoItems[i]];
+    final nodes = [for (final i in order) _focusNodes[i]];
+    _todoItems = items;
+    _focusNodes
+      ..clear()
+      ..addAll(nodes);
+  }
+
+  /// NEW: a checkbox was ticked or unticked, so move the item between groups.
+  void _onItemDoneChanged() {
+    setState(_regroup);
   }
 
   Future<void> _save() async {
@@ -80,11 +112,16 @@ class _TodoScreenState extends State<TodoScreen> {
     final firebaseTodoList = savedList
         .map((i) => {'text': i.text, 'isDone': i.isDone})
         .toList();
-    await _db.updateNote(widget.note.id, {
-      'title': _titleController.text.trim(),
-      'body': previewBody,
-      'todoList': firebaseTodoList,
-    }, customUid: widget.uid, awaitRemote: true);
+    await _db.updateNote(
+      widget.note.id,
+      {
+        'title': _titleController.text.trim(),
+        'body': previewBody,
+        'todoList': firebaseTodoList,
+      },
+      customUid: widget.uid,
+      awaitRemote: true,
+    );
   }
 
   void _createNewItemRow(int currentIndex) {
@@ -93,6 +130,7 @@ class _TodoScreenState extends State<TodoScreen> {
       _todoItems.insert(currentIndex + 1, newItem);
       final node = FocusNode();
       _focusNodes.insert(currentIndex + 1, node);
+      _regroup(); // NEW: a new item is unchecked, so it belongs above the line
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (node.canRequestFocus) node.requestFocus();
       });
@@ -104,11 +142,14 @@ class _TodoScreenState extends State<TodoScreen> {
       setState(() => _todoItems[0] = TodoItem(text: ""));
       return;
     }
+    final wasDone = _todoItems[index].isDone; // NEW
     setState(() {
       _todoItems.removeAt(index);
       _focusNodes[index].dispose();
       _focusNodes.removeAt(index);
-      if (index > 0) {
+      // CHANGED: only jump to the previous row when the removed item was an
+      // unchecked one, so deleting a checked item doesn't pop up the keyboard.
+      if (!wasDone && index > 0) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_focusNodes[index - 1].canRequestFocus)
             _focusNodes[index - 1].requestFocus();
@@ -117,8 +158,40 @@ class _TodoScreenState extends State<TodoScreen> {
     });
   }
 
+  /// NEW: the "⌃ x checked items" header plus (when open) the checked rows.
+  /// Shown as the footer of the reorderable list, so it scrolls with it.
+  Widget? _buildCheckedSection() {
+    final checkedCount = _todoItems.where((i) => i.isDone).length;
+    if (checkedCount == 0) return null;
+    final firstChecked = _todoItems.length - checkedCount;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CheckedItemsHeader(
+          count: checkedCount,
+          expanded: _checkedExpanded,
+          onTap: () => setState(() => _checkedExpanded = !_checkedExpanded),
+        ),
+        if (_checkedExpanded)
+          for (var i = firstChecked; i < _todoItems.length; i++)
+            TodoRowItem(
+              key: ValueKey(_todoItems[i]),
+              item: _todoItems[i],
+              focusNode: _focusNodes[i],
+              onNextRowRequested: () => _createNewItemRow(i),
+              onDeleteRequested: () => _removeItemRow(i),
+              onDoneChanged: _onItemDoneChanged,
+            ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // NEW: only unchecked items go in the reorderable part.
+    final uncheckedCount = _todoItems.where((i) => !i.isDone).length;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -166,7 +239,7 @@ class _TodoScreenState extends State<TodoScreen> {
               const Divider(color: Colors.white24, thickness: 1),
               Expanded(
                 child: ReorderableListView.builder(
-                  itemCount: _todoItems.length,
+                  itemCount: uncheckedCount, // CHANGED (was _todoItems.length)
                   itemBuilder: (context, index) {
                     final item = _todoItems[index];
                     return TodoRowItem(
@@ -175,8 +248,10 @@ class _TodoScreenState extends State<TodoScreen> {
                       focusNode: _focusNodes[index],
                       onNextRowRequested: () => _createNewItemRow(index),
                       onDeleteRequested: () => _removeItemRow(index),
+                      onDoneChanged: _onItemDoneChanged, // NEW
                     );
                   },
+                  footer: _buildCheckedSection(), // NEW
                   onReorderItem: (oldIndex, newIndex) {
                     setState(() {
                       final item = _todoItems.removeAt(oldIndex);
@@ -219,12 +294,17 @@ class TodoRowItem extends StatefulWidget {
   final VoidCallback onNextRowRequested;
   final VoidCallback onDeleteRequested;
 
+  /// NEW: called after the checkbox is ticked or unticked so the screen can
+  /// move the item above/below the "checked items" line.
+  final VoidCallback onDoneChanged;
+
   const TodoRowItem({
     super.key,
     required this.item,
     required this.focusNode,
     required this.onNextRowRequested,
     required this.onDeleteRequested,
+    required this.onDoneChanged,
   });
 
   @override
@@ -254,8 +334,10 @@ class _TodoRowItemState extends State<TodoRowItem> {
       leading: Checkbox(
         value: widget.item.isDone,
         activeColor: AppColors.cardGreen,
-        onChanged: (value) =>
-            setState(() => widget.item.isDone = value ?? false),
+        onChanged: (value) {
+          setState(() => widget.item.isDone = value ?? false);
+          widget.onDoneChanged(); // NEW
+        },
       ),
       title: AnimatedOpacity(
         duration: const Duration(milliseconds: 150),

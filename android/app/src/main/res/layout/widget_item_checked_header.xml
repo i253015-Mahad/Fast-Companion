@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The "⌃ 3 checked items" row in the widget list. Tapping it opens/closes
+     the checked items. Arrow UP = hidden, arrow DOWN = shown. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/checked_header_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp">
+
+    <ImageView
+        android:id="@+id/checked_arrow"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_marginEnd="8dp"
+        android:src="@drawable/ic_chevron_up" />
+
+    <TextView
+        android:id="@+id/checked_label"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textColor="#B3FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:maxLines="1" />
+</LinearLayout>

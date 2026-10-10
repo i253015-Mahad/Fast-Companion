@@ -5,6 +5,7 @@ import '../models/note.dart';
 import '../theme/app_colors.dart';
 import '../services/database_service.dart';
 import '../services/local_storage_service.dart';
+import '../widgets/checked_items_header.dart'; // NEW
 
 class TimedTaskScreen extends StatefulWidget {
   final Note note;
@@ -19,11 +20,17 @@ class TimedTaskScreen extends StatefulWidget {
 }
 
 class _TimedTaskScreenState extends State<TimedTaskScreen> {
+  // NEW: set to true if you'd rather checked items start out visible.
+  static const bool _checkedExpandedByDefault = false;
+
   late TextEditingController _titleController;
   late List<TodoItem> _timedItems;
   final List<FocusNode> _focusNodes = [];
   Timer? _tickerTimer;
   final _db = DatabaseService();
+
+  // NEW: arrow UP = checked items hidden, arrow DOWN = shown.
+  bool _checkedExpanded = _checkedExpandedByDefault;
 
   @override
   void initState() {
@@ -110,13 +117,20 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
           },
         )
         .toList();
-    await _db.updateNote(widget.note.id, {
-      'title': _titleController.text.trim(),
-      'body': previewBody,
-      'todoList': firebaseTodoList,
-    }, customUid: widget.uid, awaitRemote: true);
+    await _db.updateNote(
+      widget.note.id,
+      {
+        'title': _titleController.text.trim(),
+        'body': previewBody,
+        'todoList': firebaseTodoList,
+      },
+      customUid: widget.uid,
+      awaitRemote: true,
+    );
   }
 
+  // Unchecked tasks first (most urgent first), then checked tasks. That
+  // ordering is what the "checked items" header below relies on.
   void _sortTasksByUrgency() {
     _timedItems.sort((a, b) {
       if (a.isDone && !b.isDone) return 1;
@@ -191,6 +205,99 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
     return "${difference.inSeconds}s left";
   }
 
+  /// One task row. This is the same ListTile that used to live inline in the
+  /// ListView; [index] is the item's position in _timedItems.
+  Widget _buildTimedRow(TodoItem item, int index) {
+    return ListTile(
+      key: ValueKey(item),
+      contentPadding: EdgeInsets.zero,
+      leading: Checkbox(
+        value: item.isDone,
+        activeColor: AppColors.cardGreen,
+        onChanged: (value) {
+          setState(() {
+            item.isDone = value ?? false;
+            if (item.isDone && item.dueDateTime != null) {
+              final diff = item.dueDateTime!.difference(DateTime.now());
+              item.remainingDuration = diff.isNegative ? Duration.zero : diff;
+            } else {
+              item.remainingDuration = null;
+            }
+            // Re-sorting moves the task above/below the "checked items" line.
+            _sortTasksByUrgency();
+          });
+        },
+      ),
+      title: TextFormField(
+        focusNode: _focusNodes.length > index ? _focusNodes[index] : null,
+        initialValue: item.text,
+        style: TextStyle(
+          color: item.isDone ? Colors.white38 : Colors.white,
+          decoration: item.isDone ? TextDecoration.lineThrough : null,
+        ),
+        textInputAction: TextInputAction.next,
+        decoration: const InputDecoration(
+          hintText: "Add timed task...",
+          hintStyle: TextStyle(color: Colors.white24),
+          border: InputBorder.none,
+        ),
+        onChanged: (text) => item.text = text,
+        onFieldSubmitted: (_) => _createNewItemRow(index),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _parseCountdown(item),
+            style: TextStyle(
+              color: item.isDone
+                  ? Colors.white24
+                  : (_parseCountdown(item).contains('s left') ||
+                            _parseCountdown(item).contains('m left')
+                        ? AppColors.cardOrange
+                        : Colors.white60),
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.white38, size: 18),
+            onPressed: () => _removeItemRow(index),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// NEW: unchecked tasks, then the "⌃ x checked items" header, then (only
+  /// when open) the checked tasks. _timedItems is always sorted with unchecked
+  /// tasks first, so the first [uncheckedCount] entries are the unchecked ones.
+  Widget _buildTimedList() {
+    final checkedCount = _timedItems.where((i) => i.isDone).length;
+    final uncheckedCount = _timedItems.length - checkedCount;
+    final hasHeader = checkedCount > 0;
+    final shownChecked = (hasHeader && _checkedExpanded) ? checkedCount : 0;
+    final itemCount = uncheckedCount + (hasHeader ? 1 : 0) + shownChecked;
+
+    return ListView.builder(
+      itemCount: itemCount,
+      itemBuilder: (context, displayIndex) {
+        if (hasHeader && displayIndex == uncheckedCount) {
+          return CheckedItemsHeader(
+            count: checkedCount,
+            expanded: _checkedExpanded,
+            onTap: () => setState(() => _checkedExpanded = !_checkedExpanded),
+          );
+        }
+        // Rows after the header are shifted by one, so subtract it.
+        final index = displayIndex < uncheckedCount
+            ? displayIndex
+            : displayIndex - 1;
+        return _buildTimedRow(_timedItems[index], index);
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -238,86 +345,7 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
                 ),
               ),
               const Divider(color: Colors.white24, thickness: 1),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: _timedItems.length,
-                  itemBuilder: (context, index) {
-                    final item = _timedItems[index];
-                    return ListTile(
-                      key: ValueKey(item),
-                      contentPadding: EdgeInsets.zero,
-                      leading: Checkbox(
-                        value: item.isDone,
-                        activeColor: AppColors.cardGreen,
-                        onChanged: (value) {
-                          setState(() {
-                            item.isDone = value ?? false;
-                            if (item.isDone && item.dueDateTime != null) {
-                              final diff = item.dueDateTime!.difference(
-                                DateTime.now(),
-                              );
-                              item.remainingDuration = diff.isNegative
-                                  ? Duration.zero
-                                  : diff;
-                            } else {
-                              item.remainingDuration = null;
-                            }
-                            _sortTasksByUrgency();
-                          });
-                        },
-                      ),
-                      title: TextFormField(
-                        focusNode: _focusNodes.length > index
-                            ? _focusNodes[index]
-                            : null,
-                        initialValue: item.text,
-                        style: TextStyle(
-                          color: item.isDone ? Colors.white38 : Colors.white,
-                          decoration: item.isDone
-                              ? TextDecoration.lineThrough
-                              : null,
-                        ),
-                        textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                          hintText: "Add timed task...",
-                          hintStyle: TextStyle(color: Colors.white24),
-                          border: InputBorder.none,
-                        ),
-                        onChanged: (text) => item.text = text,
-                        onFieldSubmitted: (_) => _createNewItemRow(index),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _parseCountdown(item),
-                            style: TextStyle(
-                              color: item.isDone
-                                  ? Colors.white24
-                                  : (_parseCountdown(item).contains('s left') ||
-                                            _parseCountdown(
-                                              item,
-                                            ).contains('m left')
-                                        ? AppColors.cardOrange
-                                        : Colors.white60),
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.close,
-                              color: Colors.white38,
-                              size: 18,
-                            ),
-                            onPressed: () => _removeItemRow(index),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
+              Expanded(child: _buildTimedList()), // CHANGED
             ],
           ),
         ),

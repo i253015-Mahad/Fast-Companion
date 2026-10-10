@@ -6,20 +6,26 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.view.View
 import android.widget.RemoteViews
-import es.antonborri.home_widget.HomeWidgetBackgroundReceiver
+import es.antonborri.home_widget.HomeWidgetBackgroundIntent
 import es.antonborri.home_widget.HomeWidgetPlugin
 import org.json.JSONObject
 
 /**
- * SCROLLABLE VERSION with live countdowns. To-do and counter items are drawn
- * by the scrolling list (see NotesWidgetService). This class sets up the
- * list and handles the title, placeholder messages, text notes, the edit
- * button, and a one-shot refresh for when a task's countdown reaches zero.
+ * Scrollable widget with live countdowns and a collapsible "checked items"
+ * group. This class sets up the list and handles the title, placeholder
+ * messages, text notes, the edit button, taps on list rows, and a one-shot
+ * refresh for when a task's countdown reaches zero.
  */
 class NotesWidgetProvider : AppWidgetProvider() {
+
+    companion object {
+        // Every tap on a list row comes here first (see attachList).
+        const val ACTION_ITEM_CLICK = "com.mahad.fastcompanion.ACTION_ITEM_CLICK"
+    }
 
     override fun onUpdate(
         context: Context,
@@ -31,14 +37,51 @@ class NotesWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    // Remove a deleted widget's stored note and its pending refresh alarm.
+    // Remove a deleted widget's stored note, open/closed state and alarm.
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
         val editor = HomeWidgetPlugin.getData(context).edit()
         for (id in appWidgetIds) {
             editor.remove("payload_$id")
+            editor.remove(checkedExpandedKey(id))
             cancelExpiryRefresh(context, id)
         }
         editor.apply()
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_ITEM_CLICK) {
+            handleItemClick(context, intent.data)
+            return
+        }
+        super.onReceive(context, intent)
+    }
+
+    /**
+     * Taps on list rows arrive here.
+     *  - the checked-items header is handled right here (instant, no Dart);
+     *  - everything else (tick a task, + / - on a counter) is passed on to
+     *    home_widget's background receiver exactly as before.
+     */
+    private fun handleItemClick(context: Context, uri: Uri?) {
+        if (uri == null) return
+
+        if (uri.host.equals("toggleChecked", ignoreCase = true)) {
+            val widgetId = uri.getQueryParameter("widgetId")?.toIntOrNull() ?: return
+            val prefs = HomeWidgetPlugin.getData(context)
+            val key = checkedExpandedKey(widgetId)
+            val isOpen = prefs.getBoolean(key, DEFAULT_CHECKED_EXPANDED)
+            prefs.edit().putBoolean(key, !isOpen).apply()
+            // Only the list data changed, so refresh just the list. That keeps
+            // the scroll position better than a full redraw.
+            AppWidgetManager.getInstance(context)
+                .notifyAppWidgetViewDataChanged(widgetId, R.id.widget_list)
+        } else {
+            try {
+                HomeWidgetBackgroundIntent.getBroadcast(context, uri).send()
+            } catch (e: PendingIntent.CanceledException) {
+                android.util.Log.e("NotesWidgetProvider", "Could not forward widget tap", e)
+            }
+        }
     }
 
     private fun updateWidget(
@@ -142,12 +185,15 @@ class NotesWidgetProvider : AppWidgetProvider() {
 
         val serviceIntent = Intent(context, NotesWidgetService::class.java).apply {
             putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-            data = android.net.Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+            data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
         }
         views.setRemoteAdapter(R.id.widget_list, serviceIntent)
 
-        val template = Intent(context, HomeWidgetBackgroundReceiver::class.java).apply {
-            action = "es.antonborri.home_widget.action.BACKGROUND"
+        // CHANGED: row taps now go to THIS provider (handleItemClick above),
+        // which handles the checked-items header itself and forwards every
+        // other tap to home_widget. Must be MUTABLE so each row can add its URI.
+        val template = Intent(context, NotesWidgetProvider::class.java).apply {
+            action = ACTION_ITEM_CLICK
         }
         var flags = PendingIntent.FLAG_UPDATE_CURRENT
         if (Build.VERSION.SDK_INT >= 31) {
@@ -160,11 +206,9 @@ class NotesWidgetProvider : AppWidgetProvider() {
     }
 
     // ---- expiry refresh -------------------------------------------------
-    // A ticking Chronometer keeps counting past zero (it would show
-    // "-0:05 left"). To avoid that, schedule ONE refresh just after the
-    // soonest due time among un-ticked tasks; the refresh redraws the task as
-    // "Time expired" and schedules the next one. This is an inexact alarm,
-    // so it needs no special permission, but Android may delay it by a
+    // A ticking countdown keeps counting past zero. To avoid that, schedule
+    // ONE refresh just after the soonest due time among un-ticked tasks. It
+    // is an inexact alarm (no special permission), so Android may delay it a
     // little when the phone is idle.
 
     private fun expiryPendingIntent(context: Context, appWidgetId: Int): PendingIntent {
