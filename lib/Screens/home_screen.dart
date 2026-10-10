@@ -15,6 +15,7 @@ import 'package:fast_companion/services/database_service.dart';
 import 'package:fast_companion/services/local_storage_service.dart';
 import 'package:fast_companion/services/multi_account_auth_service.dart';
 import 'package:fast_companion/services/home_widget_service.dart';
+import '../app_signals.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,7 +24,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final DatabaseService _dbService = DatabaseService();
   final MultiAccountAuthService _authService = MultiAccountAuthService.instance;
   final List<Map<String, String>> _accountPool = [];
@@ -337,6 +338,31 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _initState();
+    homeRefreshSignal.addListener(_handleExternalRefreshSignal);
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    homeRefreshSignal.removeListener(_handleExternalRefreshSignal);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Catches changes made via the widget's checkbox/counter taps — those
+    // run in a separate headless engine with no shared memory with this
+    // one, so homeRefreshSignal can't reach across. Refreshing whenever the
+    // app comes back to the foreground covers it generally, since that's
+    // also when a widget-driven change would have happened.
+    if (state == AppLifecycleState.resumed && _activeNotesUid != null) {
+      _refreshLocalNotes();
+    }
+  }
+
+  void _handleExternalRefreshSignal() {
+    if (mounted) _refreshLocalNotes();
   }
 
   Future<void> _initState() async {

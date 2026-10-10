@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/note.dart';
 import '../theme/app_colors.dart';
 import '../services/database_service.dart';
+import '../services/local_storage_service.dart';
 
 class CounterScreen extends StatefulWidget {
   final Note note;
@@ -29,6 +30,38 @@ class _CounterScreenState extends State<CounterScreen> {
     _counterItems = List.from(widget.note.counterList ?? []);
     if (_counterItems.isEmpty) _counterItems.add(CounterItem(label: ""));
     for (var _ in _counterItems) _focusNodes.add(FocusNode());
+    // The Note object this screen was built with can be stale — e.g. the
+    // widget adjusted a count after this note was last loaded into
+    // whatever list handed it to us. _save() overwrites the whole
+    // counterList on close, so without this, that stale snapshot would
+    // silently wipe out any newer widget-driven changes. This re-fetch is
+    // near-instant (local disk), so it resolves before the user has
+    // usually even started reading the screen.
+    _loadFreshData();
+  }
+
+  Future<void> _loadFreshData() async {
+    final notes = await LocalStorageService.loadNotes(widget.uid);
+    Note? fresh;
+    for (final n in notes) {
+      if (n.id == widget.note.id) {
+        fresh = n;
+        break;
+      }
+    }
+    if (fresh == null || !mounted) return;
+
+    setState(() {
+      _titleController.text = fresh!.title;
+      _counterItems = List.from(fresh.counterList);
+      if (_counterItems.isEmpty) _counterItems.add(CounterItem(label: ""));
+      for (final f in _focusNodes) {
+        f.dispose();
+      }
+      _focusNodes
+        ..clear()
+        ..addAll(List.generate(_counterItems.length, (_) => FocusNode()));
+    });
   }
 
   @override
@@ -52,7 +85,7 @@ class _CounterScreenState extends State<CounterScreen> {
       'title': _titleController.text.trim(),
       'body': previewBody,
       'counterList': firebaseCounterList,
-    }, customUid: widget.uid);
+    }, customUid: widget.uid, awaitRemote: true);
   }
 
   void _createNewCounterRow(int currentIndex) {

@@ -211,6 +211,14 @@ class DatabaseService {
     String noteId,
     Map<String, dynamic> updatedData, {
     String? customUid,
+    // Interactive app screens should leave this false (default) — see the
+    // comment below on why the remote write isn't awaited there. The
+    // widget's background handler (widget_background_main.dart) sets this
+    // true instead: there's no UI to freeze in a headless engine, and
+    // Android can kill that engine right after this function returns —
+    // so the write needs to actually finish, not just be issued, before
+    // we hand control back.
+    bool awaitRemote = false,
   }) async {
     final targetUid = customUid ?? uid;
 
@@ -235,21 +243,32 @@ class DatabaseService {
       await LocalStorageService.saveNotes(targetUid, localNotes);
     }
 
-    // Not awaited — offline, this Future won't resolve until reconnect,
-    // which would freeze whatever called updateNote() (tick marks, the
-    // back button, counter taps) until the connection came back.
-    _databaseFor(targetUid)
+    final remoteWrite = _databaseFor(targetUid)
         .ref()
         .child('users')
         .child(targetUid)
         .child('notes')
         .child(noteId)
         .update(updatedData)
-        .timeout(const Duration(seconds: 15))
-        .then((_) => print("✅ DATABASE UPDATE SUCCESS for note: $noteId"))
-        .catchError((e) {
-          print("⚠️ Firebase update failed/queued, local cache updated: $e");
-        });
+        .timeout(const Duration(seconds: 15));
+
+    if (awaitRemote) {
+      try {
+        await remoteWrite;
+        print("✅ DATABASE UPDATE SUCCESS for note: $noteId");
+      } catch (e) {
+        print("⚠️ Firebase update failed (awaited), local cache updated: $e");
+      }
+    } else {
+      // Not awaited — offline, this Future won't resolve until reconnect,
+      // which would freeze whatever called updateNote() (tick marks, the
+      // back button, counter taps) until the connection came back.
+      remoteWrite
+          .then((_) => print("✅ DATABASE UPDATE SUCCESS for note: $noteId"))
+          .catchError((e) {
+            print("⚠️ Firebase update failed/queued, local cache updated: $e");
+          });
+    }
   }
 
   Future<void> toggleStarStatus(

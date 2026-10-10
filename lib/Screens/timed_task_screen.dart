@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/note.dart';
 import '../theme/app_colors.dart';
 import '../services/database_service.dart';
+import '../services/local_storage_service.dart';
 
 class TimedTaskScreen extends StatefulWidget {
   final Note note;
@@ -42,6 +43,44 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
     _tickerTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _sortTasksByUrgency());
     });
+    // The Note object this screen was built with can be stale — e.g. the
+    // widget checked off a task after this note was last loaded into
+    // whatever list handed it to us. _save() overwrites the whole
+    // todoList on close, so without this, that stale snapshot would
+    // silently wipe out any newer widget-driven changes.
+    _loadFreshData();
+  }
+
+  Future<void> _loadFreshData() async {
+    final notes = await LocalStorageService.loadNotes(widget.uid);
+    Note? fresh;
+    for (final n in notes) {
+      if (n.id == widget.note.id) {
+        fresh = n;
+        break;
+      }
+    }
+    if (fresh == null || !mounted) return;
+
+    setState(() {
+      _titleController.text = fresh!.title;
+      _timedItems = List.from(fresh.todoList);
+      if (_timedItems.isEmpty) {
+        _timedItems.add(
+          TodoItem(
+            text: "",
+            dueDateTime: DateTime.now().add(const Duration(days: 2)),
+          ),
+        );
+      }
+      for (final f in _focusNodes) {
+        f.dispose();
+      }
+      _focusNodes
+        ..clear()
+        ..addAll(List.generate(_timedItems.length, (_) => FocusNode()));
+      _sortTasksByUrgency();
+    });
   }
 
   @override
@@ -75,7 +114,7 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
       'title': _titleController.text.trim(),
       'body': previewBody,
       'todoList': firebaseTodoList,
-    }, customUid: widget.uid);
+    }, customUid: widget.uid, awaitRemote: true);
   }
 
   void _sortTasksByUrgency() {
