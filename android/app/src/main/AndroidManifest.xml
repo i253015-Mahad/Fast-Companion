@@ -62,6 +62,11 @@
                 <action android:name="es.antonborri.home_widget.action.BACKGROUND" />
             </intent-filter>
         </receiver>
+
+        <service
+            android:name=".NotesWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
              
         <meta-data
             android:name="flutterEmbedding"

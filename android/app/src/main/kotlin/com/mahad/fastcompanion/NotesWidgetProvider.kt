@@ -1,29 +1,25 @@
 package com.mahad.fastcompanion
 
-import com.mahad.fastcompanion.R
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
-import android.os.Bundle
-import android.text.SpannableString
-import android.text.Spanned
-import android.text.style.StrikethroughSpan
+import android.os.Build
 import android.view.View
 import android.widget.RemoteViews
-import es.antonborri.home_widget.HomeWidgetBackgroundIntent
+import es.antonborri.home_widget.HomeWidgetBackgroundReceiver
 import es.antonborri.home_widget.HomeWidgetPlugin
-import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * SCROLLABLE VERSION with live countdowns. To-do and counter items are drawn
+ * by the scrolling list (see NotesWidgetService). This class sets up the
+ * list and handles the title, placeholder messages, text notes, the edit
+ * button, and a one-shot refresh for when a task's countdown reaches zero.
+ */
 class NotesWidgetProvider : AppWidgetProvider() {
-
-    // Must match the number of statically-declared rows in
-    // notes_widget_layout.xml (row_todo_0..N-1 / row_counter_0..M-1).
-    private val maxTodoSlots = 8
-    private val maxCounterSlots = 5
 
     override fun onUpdate(
         context: Context,
@@ -35,20 +31,13 @@ class NotesWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    override fun onAppWidgetOptionsChanged(
-        context: Context,
-        appWidgetManager: AppWidgetManager,
-        appWidgetId: Int,
-        newOptions: Bundle
-    ) {
-        updateWidget(context, appWidgetManager, appWidgetId)
-    }
-
-    // NEW (Fix 4e): remove a deleted widget's stored note so data doesn't
-    // pile up. The Dart side prunes ids whose payload is gone.
+    // Remove a deleted widget's stored note and its pending refresh alarm.
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
         val editor = HomeWidgetPlugin.getData(context).edit()
-        for (id in appWidgetIds) editor.remove("payload_$id")
+        for (id in appWidgetIds) {
+            editor.remove("payload_$id")
+            cancelExpiryRefresh(context, id)
+        }
         editor.apply()
     }
 
@@ -60,26 +49,14 @@ class NotesWidgetProvider : AppWidgetProvider() {
         try {
             val views = RemoteViews(context.packageName, R.layout.notes_widget_layout)
 
-            // Hide everything by default, then reveal only what this note
-            // type / size actually needs.
             views.setViewVisibility(R.id.row_text, View.GONE)
-            views.setViewVisibility(R.id.todo_container, View.GONE)
-            views.setViewVisibility(R.id.counter_container, View.GONE)
-            views.setViewVisibility(R.id.row_more, View.GONE)
-            for (i in 0 until maxTodoSlots) {
-                views.setViewVisibility(getTodoRowId(context, i), View.GONE)
-            }
-            for (i in 0 until maxCounterSlots) {
-                views.setViewVisibility(getCounterRowId(context, i), View.GONE)
-            }
+            views.setViewVisibility(R.id.widget_list, View.GONE)
 
-            // CHANGED (Fix 4e): each widget reads ITS OWN note ("payload_<id>").
             val prefs = HomeWidgetPlugin.getData(context)
             val payloadStr = prefs.getString("payload_$appWidgetId", null)
 
-            // CHANGED (Fix 4e): also treat "" (deleted note / signed out) as
-            // empty. JSONObject("") would throw and freeze the widget.
             if (payloadStr.isNullOrEmpty()) {
+                cancelExpiryRefresh(context, appWidgetId)
                 views.setTextViewText(R.id.widget_title, "No note pinned")
                 views.setViewVisibility(R.id.btn_edit, View.GONE)
                 views.setTextViewText(
@@ -99,131 +76,38 @@ class NotesWidgetProvider : AppWidgetProvider() {
 
             views.setTextViewText(R.id.widget_title, title)
 
-            val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
-            val heightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 110)
-            val sizeBasedCap = when {
-                heightDp < 130 -> 2
-                heightDp < 200 -> 4
-                heightDp < 280 -> 6
-                else -> maxTodoSlots
-            }
-
             when (type) {
                 "todo", "timed" -> {
-                    views.setViewVisibility(R.id.todo_container, View.VISIBLE)
-                    val items = payload.optJSONArray("todoList") ?: JSONArray()
-                    val cap = minOf(sizeBasedCap, maxTodoSlots)
-                    val shown = minOf(items.length(), cap)
-
-                    for (i in 0 until shown) {
-                        val item = items.getJSONObject(i)
-                        views.setViewVisibility(getTodoRowId(context, i), View.VISIBLE)
-
-                        // NEW (Fix 9): strike through + dim ticked items.
-                        val isDone = item.optBoolean("isDone", false)
-                        val text = item.optString("text")
-                        val styled = SpannableString(text)
-                        if (isDone && text.isNotEmpty()) {
-                            styled.setSpan(
-                                StrikethroughSpan(),
-                                0,
-                                text.length,
-                                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                            )
-                        }
-                        views.setTextViewText(getTodoTextId(context, i), styled)
-                        views.setTextColor(
-                            getTodoTextId(context, i),
-                            if (isDone) 0x80FFFFFF.toInt() else 0xFFFFFFFF.toInt()
-                        )
-
-                        views.setImageViewResource(
-                            getTodoCheckId(context, i),
-                            if (isDone) R.drawable.ic_checkbox_checked else R.drawable.ic_checkbox_unchecked
-                        )
-
-                        // CHANGED (Fix 8): countdown text is computed NOW,
-                        // from raw timestamps, instead of a stale saved string.
-                        val meta = formatMeta(item)
-                        if (meta.isNotEmpty()) {
-                            views.setTextViewText(getTodoMetaId(context, i), meta)
-                            views.setViewVisibility(getTodoMetaId(context, i), View.VISIBLE)
-                        } else {
-                            views.setViewVisibility(getTodoMetaId(context, i), View.GONE)
-                        }
-
-                        val toggleUri = Uri.parse(
-                            "notesWidget://toggleTodo?uid=$uid&noteId=$noteId&index=$i"
-                        )
-                        views.setOnClickPendingIntent(
-                            getTodoRowId(context, i),
-                            HomeWidgetBackgroundIntent.getBroadcast(context, toggleUri)
-                        )
-                    }
-
-                    if (items.length() == 0) {
+                    val count = payload.optJSONArray("todoList")?.length() ?: 0
+                    if (count == 0) {
                         views.setViewVisibility(R.id.row_text, View.VISIBLE)
                         views.setTextViewText(R.id.row_text, "No items yet")
-                    } else if (items.length() > shown) {
-                        views.setViewVisibility(R.id.row_more, View.VISIBLE)
-                        views.setTextViewText(
-                            R.id.row_more,
-                            "+ ${items.length() - shown} more — resize widget or open app"
-                        )
+                    } else {
+                        attachList(context, views, appWidgetId)
                     }
+                    scheduleExpiryRefresh(context, appWidgetId, payload)
                 }
 
                 "counter" -> {
-                    views.setViewVisibility(R.id.counter_container, View.VISIBLE)
-                    val items = payload.optJSONArray("counterList") ?: JSONArray()
-                    val cap = minOf(sizeBasedCap, maxCounterSlots)
-                    val shown = minOf(items.length(), cap)
-
-                    for (i in 0 until shown) {
-                        val item = items.getJSONObject(i)
-                        views.setViewVisibility(getCounterRowId(context, i), View.VISIBLE)
-                        views.setTextViewText(getCounterLabelId(context, i), item.optString("label"))
-                        views.setTextViewText(
-                            getCounterCountId(context, i),
-                            item.optInt("count", 0).toString()
-                        )
-
-                        val minusUri = Uri.parse(
-                            "notesWidget://adjustCounter?uid=$uid&noteId=$noteId&index=$i&delta=-1"
-                        )
-                        val plusUri = Uri.parse(
-                            "notesWidget://adjustCounter?uid=$uid&noteId=$noteId&index=$i&delta=1"
-                        )
-                        views.setOnClickPendingIntent(
-                            getCounterMinusId(context, i),
-                            HomeWidgetBackgroundIntent.getBroadcast(context, minusUri)
-                        )
-                        views.setOnClickPendingIntent(
-                            getCounterPlusId(context, i),
-                            HomeWidgetBackgroundIntent.getBroadcast(context, plusUri)
-                        )
-                    }
-
-                    if (items.length() == 0) {
+                    cancelExpiryRefresh(context, appWidgetId)
+                    val count = payload.optJSONArray("counterList")?.length() ?: 0
+                    if (count == 0) {
                         views.setViewVisibility(R.id.row_text, View.VISIBLE)
                         views.setTextViewText(R.id.row_text, "No counters yet")
-                    } else if (items.length() > shown) {
-                        views.setViewVisibility(R.id.row_more, View.VISIBLE)
-                        views.setTextViewText(
-                            R.id.row_more,
-                            "+ ${items.length() - shown} more — resize widget or open app"
-                        )
+                    } else {
+                        attachList(context, views, appWidgetId)
                     }
                 }
 
                 else -> {
+                    cancelExpiryRefresh(context, appWidgetId)
                     val body = payload.optString("body", "No content")
                     views.setViewVisibility(R.id.row_text, View.VISIBLE)
                     views.setTextViewText(R.id.row_text, body)
                 }
             }
 
-            // Edit button — opens the app straight into this note.
+            // Edit button: opens the app straight into this note.
             val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
             if (launchIntent != null && noteId.isNotEmpty()) {
                 launchIntent.putExtra("open_note_uid", uid)
@@ -246,50 +130,85 @@ class NotesWidgetProvider : AppWidgetProvider() {
             }
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
+            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list)
         } catch (e: Exception) {
             android.util.Log.e("NotesWidgetProvider", "Failed to update widget", e)
         }
     }
 
-    // NEW (Fix 8): builds "Due in 2h 5m" / "Overdue by 10m" / "45m left" at
-    // draw time from the raw timestamps the Dart side saved.
-    private fun formatMeta(item: JSONObject): String {
-        val isDone = item.optBoolean("isDone", false)
-        // Ticked items show their frozen remaining time (matches the app).
-        if (isDone && !item.isNull("remainingMs")) {
-            return "${formatDuration(item.getLong("remainingMs"))} left"
+    /** Shows the scrolling list and wires up tapping on its rows. */
+    private fun attachList(context: Context, views: RemoteViews, appWidgetId: Int) {
+        views.setViewVisibility(R.id.widget_list, View.VISIBLE)
+
+        val serviceIntent = Intent(context, NotesWidgetService::class.java).apply {
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+            data = android.net.Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
         }
-        if (!item.isNull("dueMs")) {
-            val diff = item.getLong("dueMs") - System.currentTimeMillis()
-            return if (diff < 0) "Overdue by ${formatDuration(-diff)}"
-            else "Due in ${formatDuration(diff)}"
+        views.setRemoteAdapter(R.id.widget_list, serviceIntent)
+
+        val template = Intent(context, HomeWidgetBackgroundReceiver::class.java).apply {
+            action = "es.antonborri.home_widget.action.BACKGROUND"
         }
-        if (!item.isNull("remainingMs")) {
-            return "${formatDuration(item.getLong("remainingMs"))} left"
+        var flags = PendingIntent.FLAG_UPDATE_CURRENT
+        if (Build.VERSION.SDK_INT >= 31) {
+            flags = flags or PendingIntent.FLAG_MUTABLE
         }
-        return ""
+        views.setPendingIntentTemplate(
+            R.id.widget_list,
+            PendingIntent.getBroadcast(context, appWidgetId, template, flags)
+        )
     }
 
-    private fun formatDuration(ms: Long): String {
-        val totalMinutes = ms / 60000
-        val h = totalMinutes / 60
-        val m = totalMinutes % 60
-        return if (h > 0) "${h}h ${m}m" else "${m}m"
+    // ---- expiry refresh -------------------------------------------------
+    // A ticking Chronometer keeps counting past zero (it would show
+    // "-0:05 left"). To avoid that, schedule ONE refresh just after the
+    // soonest due time among un-ticked tasks; the refresh redraws the task as
+    // "Time expired" and schedules the next one. This is an inexact alarm,
+    // so it needs no special permission, but Android may delay it by a
+    // little when the phone is idle.
+
+    private fun expiryPendingIntent(context: Context, appWidgetId: Int): PendingIntent {
+        val intent = Intent(context, NotesWidgetProvider::class.java).apply {
+            action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            appWidgetId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
     }
 
-    // Helpers mapping index -> the fixed resource ids declared in XML
-    // (row_todo_0, check_0, text_0, meta_0, row_counter_0, label_0, ...).
-    private fun idFor(context: Context, name: String): Int {
-        return context.resources.getIdentifier(name, "id", context.packageName)
+    private fun scheduleExpiryRefresh(context: Context, appWidgetId: Int, payload: JSONObject) {
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val pending = expiryPendingIntent(context, appWidgetId)
+            alarmManager.cancel(pending)
+
+            val items = payload.optJSONArray("todoList") ?: return
+            val now = System.currentTimeMillis()
+            var next = Long.MAX_VALUE
+            for (i in 0 until items.length()) {
+                val item = items.getJSONObject(i)
+                if (item.optBoolean("isDone", false) || item.isNull("dueMs")) continue
+                val due = item.getLong("dueMs")
+                if (due > now && due < next) next = due
+            }
+            if (next != Long.MAX_VALUE) {
+                alarmManager.set(AlarmManager.RTC, next + 1000, pending)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("NotesWidgetProvider", "Failed to schedule expiry refresh", e)
+        }
     }
 
-    private fun getTodoRowId(context: Context, i: Int) = idFor(context, "row_todo_$i")
-    private fun getTodoCheckId(context: Context, i: Int) = idFor(context, "check_$i")
-    private fun getTodoTextId(context: Context, i: Int) = idFor(context, "text_$i")
-    private fun getTodoMetaId(context: Context, i: Int) = idFor(context, "meta_$i")
-    private fun getCounterRowId(context: Context, i: Int) = idFor(context, "row_counter_$i")
-    private fun getCounterLabelId(context: Context, i: Int) = idFor(context, "label_$i")
-    private fun getCounterMinusId(context: Context, i: Int) = idFor(context, "minus_$i")
-    private fun getCounterCountId(context: Context, i: Int) = idFor(context, "count_$i")
-    private fun getCounterPlusId(context: Context, i: Int) = idFor(context, "plus_$i")
+    private fun cancelExpiryRefresh(context: Context, appWidgetId: Int) {
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.cancel(expiryPendingIntent(context, appWidgetId))
+        } catch (e: Exception) {
+            android.util.Log.e("NotesWidgetProvider", "Failed to cancel expiry refresh", e)
+        }
+    }
 }
