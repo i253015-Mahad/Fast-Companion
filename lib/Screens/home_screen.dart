@@ -1,4 +1,6 @@
 // lib/screens/home_screen.dart
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
@@ -36,6 +38,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isMenuOpen = false;
   final TextEditingController searchController = TextEditingController();
   String searchQuery = "";
+
+  // Live vertical drag distance (px) on the account avatar, for the
+  // swipe-up/down-to-switch-account gesture. Negative = swiping up.
+  double _avatarDragOffset = 0;
+  // True while the finger is down: makes the return animation instant
+  // during the drag and springy once released.
+  bool _isAvatarDragging = false;
+  // Blocks a second swipe while a switch is still activating a session.
+  bool _isSwitchingAccount = false;
+  // Photo layered over the avatar (the account a swipe would land on, or
+  // the one being switched to), and its target opacity. Layering keeps the
+  // avatar from flashing the old account back mid-switch, and lets the
+  // preview fade out smoothly when a swipe is released too early.
+  String? _previewPhoto;
+  double _previewOpacity = 0;
+  // Distance the finger must travel before a swipe counts as a switch.
+  static const double _avatarSwitchThreshold = 30;
+  // How far the avatar can be dragged before it stops following the finger.
+  // Kept modest so it doesn't slide off the top of the header.
+  static const double _avatarDragClamp = 50;
+  // Snap-back / cross-fade duration — kept short so switching feels snappy.
+  static const Duration _avatarSnapDuration = Duration(milliseconds: 140);
 
   final List<Color> cardColors = [
     AppColors.cardOrange,
@@ -258,6 +282,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       _userProfileUrl = null;
                       _activeNotesUid = null;
                       _localNotes = [];
+                      _isMenuOpen = false;
                     });
                   }
                   Navigator.pop(context);
@@ -282,13 +307,117 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
     await _activateSession(session);
-    if (mounted) {
-      ScaffoldMessenger.of(scaffoldContext).showSnackBar(
-        SnackBar(
-          content: Text("Switched to: ${session.email}"),
-          backgroundColor: AppColors.cardOrange,
-        ),
-      );
+  }
+
+  /// The account a vertical swipe would land on: next when swiping up,
+  /// previous when swiping down, wrapping around the pool. Null unless
+  /// there's more than one signed-in account to move between.
+  Map<String, String>? _neighborAccount({required bool swipeUp}) {
+    if (!_isUserLoggedIn || _accountPool.length < 2) return null;
+    final current = _accountPool.indexWhere(
+      (acc) => acc['uid'] == _activeNotesUid,
+    );
+    if (current < 0) return null;
+    final step = swipeUp ? 1 : -1;
+    final next = (current + step + _accountPool.length) % _accountPool.length;
+    return _accountPool[next];
+  }
+
+  /// Called whenever the drag moves: keeps `_previewPhoto` pointed at the
+  /// account the swipe would land on and fades it in as the finger travels.
+  void _updateAvatarPreview() {
+    final neighbor = _neighborAccount(swipeUp: _avatarDragOffset < 0);
+    _previewPhoto = neighbor == null ? null : (neighbor['photoUrl'] ?? '');
+    _previewOpacity = _avatarDragOffset == 0
+        ? 0
+        : (_avatarDragOffset.abs() / _avatarDragClamp).clamp(0.0, 1.0);
+  }
+
+  /// The avatar itself; [photoUrl] of '' or null falls back to the generic
+  /// account icon.
+  Widget _buildAccountCircle(String? photoUrl) {
+    final hasPhoto = photoUrl != null && photoUrl.isNotEmpty;
+    return CircleAvatar(
+      radius: 18,
+      backgroundColor: Colors.white12,
+      backgroundImage: hasPhoto ? NetworkImage(photoUrl) : null,
+      child: hasPhoto
+          ? null
+          : const Icon(
+              Icons.account_circle_outlined,
+              color: Colors.white70,
+              size: 24,
+            ),
+    );
+  }
+
+  /// Fades are done: drop the preview layer once it's fully transparent
+  /// (and no new drag/switch has claimed it).
+  void _onPreviewFadeComplete() {
+    if (!mounted) return;
+    if (_previewOpacity == 0 && !_isAvatarDragging && !_isSwitchingAccount) {
+      setState(() => _previewPhoto = null);
+    }
+  }
+
+  void _onAvatarDragStart(DragStartDetails details) {
+    if (_isSwitchingAccount) return;
+    _isAvatarDragging = true;
+    setState(() {
+      _avatarDragOffset = 0;
+      _previewOpacity = 0;
+    });
+  }
+
+  void _onAvatarDragUpdate(DragUpdateDetails details) {
+    if (_isSwitchingAccount) return;
+    final delta = details.primaryDelta;
+    if (delta == null) return;
+    setState(() {
+      _avatarDragOffset = (_avatarDragOffset + delta)
+          .clamp(-_avatarDragClamp, _avatarDragClamp)
+          .toDouble();
+      _updateAvatarPreview();
+    });
+  }
+
+  void _onAvatarDragEnd(DragEndDetails details) async {
+    _isAvatarDragging = false;
+    final offset = _avatarDragOffset;
+
+    // Not far enough (or nowhere to go) — snap back and fade the preview.
+    final target = offset.abs() >= _avatarSwitchThreshold
+        ? _neighborAccount(swipeUp: offset < 0)
+        : null;
+    if (target == null || target['uid'] == null) {
+      // Snap back; keep the preview layer so it can fade out smoothly.
+      setState(() {
+        _avatarDragOffset = 0;
+        _previewOpacity = 0;
+      });
+      return;
+    }
+
+    // Snap the avatar home but hold the target's photo at full opacity, so
+    // the switch lands on it without ever flashing the old account back.
+    _isSwitchingAccount = true;
+    setState(() {
+      _avatarDragOffset = 0;
+      _previewPhoto = target['photoUrl'] ?? '';
+      _previewOpacity = 1;
+    });
+    try {
+      await _switchToUid(target['uid']!, context);
+    } finally {
+      _isSwitchingAccount = false;
+      // The base avatar now shows the new account (or the old one, if the
+      // switch failed), so fade the overlay out rather than popping it.
+      if (mounted) {
+        setState(() => _previewOpacity = 0);
+      } else {
+        _previewPhoto = null;
+        _previewOpacity = 0;
+      }
     }
   }
 
@@ -434,7 +563,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (widgets.isEmpty) {
       messenger.showSnackBar(
         const SnackBar(
-          content: Text('Add the Notes widget to your home screen first.'),
+          backgroundColor: AppColors.cardOrange,
+          content: Text(
+            'Add the Notes widget to your home screen first.',
+            style: TextStyle(color: Colors.black87),
+          ),
         ),
       );
       return;
@@ -467,8 +600,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await HomeWidgetService.pinNote(targetId, uid, note);
     messenger.showSnackBar(
       SnackBar(
+        backgroundColor: AppColors.cardOrange,
         content: Text(
           '"${note.title.isEmpty ? 'Untitled' : note.title}" pinned to widget',
+          style: const TextStyle(color: Colors.black87),
         ),
       ),
     );
@@ -912,6 +1047,60 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// The empty-state bulb: an outlined bulb with rays fanned around its
+  /// top so it reads as "switched on".
+  Widget _buildLitBulb() {
+    const rayColor = AppColors.cardOrange;
+    const rayLength = 12.0;
+    const rayThickness = 3.0;
+    // Distance from the bulb's center to each ray's center.
+    const orbit = 40.0;
+    const box = 100.0;
+    const center = box / 2;
+    // Degrees in screen space (y grows downward): rays fan across the
+    // top half of the bulb — left, up-left, up, up-right, right.
+    const angles = [180.0, -135.0, -90.0, -45.0, 0.0];
+
+    return SizedBox(
+      width: box,
+      height: box,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          const Icon(
+            Icons.lightbulb_outline_rounded,
+            size: 60,
+            color: rayColor,
+          ),
+          for (final deg in angles)
+            Positioned(
+              left:
+                  center +
+                  orbit * math.cos(deg * math.pi / 180) -
+                  rayLength / 2,
+              top:
+                  center +
+                  orbit * math.sin(deg * math.pi / 180) -
+                  rayThickness / 2,
+              // Rotating a horizontal bar by `deg` aligns it with the
+              // radius it sits on.
+              child: Transform.rotate(
+                angle: deg * math.pi / 180,
+                child: Container(
+                  width: rayLength,
+                  height: rayThickness,
+                  decoration: const BoxDecoration(
+                    color: rayColor,
+                    borderRadius: BorderRadius.all(Radius.circular(1.5)),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -927,32 +1116,82 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 children: [
                   const Text("Notes", style: AppTextStyles.title),
                   GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onTap: () {
                       if (_isUserLoggedIn) {
                         _showAccountSwitcherSheet(context);
                       }
                     },
-                    child: CircleAvatar(
-                      radius: 18,
-                      backgroundColor: Colors.white12,
-                      backgroundImage:
-                          _isUserLoggedIn && _userProfileUrl != null
-                          ? NetworkImage(_userProfileUrl!)
-                          : null,
-                      child: (!_isUserLoggedIn || _userProfileUrl == null)
-                          ? const Icon(
-                              Icons.account_circle_outlined,
-                              color: Colors.white70,
-                              size: 24,
-                            )
-                          : null,
+                    // Swipe up = next account, down = previous one (wraps
+                    // around). Only meaningful with 2+ signed-in accounts.
+                    onVerticalDragStart: _onAvatarDragStart,
+                    onVerticalDragUpdate: _onAvatarDragUpdate,
+                    onVerticalDragEnd: _onAvatarDragEnd,
+                    onVerticalDragCancel: () {
+                      if (_isSwitchingAccount || !_isAvatarDragging) return;
+                      _isAvatarDragging = false;
+                      setState(() {
+                        _avatarDragOffset = 0;
+                        _previewOpacity = 0;
+                      });
+                    },
+                    // Padding enlarges the touch target beyond the 36px
+                    // circle so the swipe is easy to perform.
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 8,
+                        horizontal: 6,
+                      ),
+                      child: AnimatedSlide(
+                        offset: Offset(0, _avatarDragOffset / 36),
+                        duration: _isAvatarDragging
+                            ? Duration.zero
+                            : _avatarSnapDuration,
+                        curve: Curves.easeOutBack,
+                        child: AnimatedScale(
+                          scale:
+                              1.0 -
+                              ((_avatarDragOffset.abs() / _avatarDragClamp)
+                                      .clamp(0.0, 1.0) *
+                                  0.15),
+                          duration: _isAvatarDragging
+                              ? Duration.zero
+                              : _avatarSnapDuration,
+                          curve: Curves.easeOut,
+                          child: SizedBox(
+                            width: 36,
+                            height: 36,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                _buildAccountCircle(
+                                  _isUserLoggedIn ? _userProfileUrl : null,
+                                ),
+                                // The account a swipe would land on, fading
+                                // in as you drag (held at full opacity for
+                                // the duration of an actual switch).
+                                if (_previewPhoto != null)
+                                  AnimatedOpacity(
+                                    opacity: _previewOpacity,
+                                    duration: _isAvatarDragging
+                                        ? Duration.zero
+                                        : _avatarSnapDuration,
+                                    curve: Curves.easeOut,
+                                    onEnd: _onPreviewFadeComplete,
+                                    child: _buildAccountCircle(_previewPhoto),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 20),
               TextField(
-                style: const TextStyle(color: Colors.teal, fontSize: 18),
+                style: const TextStyle(color: Colors.white, fontSize: 18),
                 controller: searchController,
                 onChanged: (value) {
                   setState(() {
@@ -1046,10 +1285,57 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           }
 
                           if (displayNotes.isEmpty) {
-                            return const Center(
-                              child: Text(
-                                "No notes yet. Tap + to add one!",
-                                style: TextStyle(color: Colors.white30),
+                            // A search that matched nothing isn't the same
+                            // as an account with no notes — say so.
+                            if (searchQuery.isNotEmpty) {
+                              return Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.search_off_rounded,
+                                      size: 56,
+                                      color: Colors.white38,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'No notes match "$searchQuery"',
+                                      style: const TextStyle(
+                                        color: Colors.white60,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    const Text(
+                                      "Try a different search term.",
+                                      style: TextStyle(
+                                        color: Colors.white38,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+
+                            // Sits a little above center so it doesn't feel
+                            // like it's sinking to the bottom of the screen.
+                            return Align(
+                              alignment: const Alignment(0, -0.25),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _buildLitBulb(),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    "Add a note and get Creative!",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
                               ),
                             );
                           }
@@ -1113,95 +1399,101 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       ),
 
-      floatingActionButton: Stack(
-        alignment: Alignment.bottomRight,
-        children: [
-          if (_isMenuOpen)
-            GestureDetector(
-              onTap: () => setState(() => _isMenuOpen = false),
-              child: Container(
-                width: MediaQuery.of(context).size.width,
-                height: MediaQuery.of(context).size.height,
-                color: Colors.black.withOpacity(0.6),
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 80.0, right: 4.0),
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 200),
-              opacity: _isMenuOpen ? 1.0 : 0.0,
-              child: IgnorePointer(
-                ignoring: !_isMenuOpen,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    _buildSpeedDialItem(
-                      label: "Timed Tasks",
-                      icon: Icons.hourglass_top_rounded,
-                      iconColor: Colors.deepPurpleAccent,
-                      onTap: () {
-                        setState(() => _isMenuOpen = false);
-                        _showNewTimedTaskDialog();
-                      },
+      floatingActionButton: !_isUserLoggedIn
+          ? null
+          : Stack(
+              alignment: Alignment.bottomRight,
+              children: [
+                if (_isMenuOpen)
+                  GestureDetector(
+                    onTap: () => setState(() => _isMenuOpen = false),
+                    child: Container(
+                      width: MediaQuery.of(context).size.width,
+                      height: MediaQuery.of(context).size.height,
+                      color: Colors.black.withOpacity(0.6),
                     ),
-                    const SizedBox(height: 12),
-                    _buildSpeedDialItem(
-                      label: "Counter List",
-                      icon: Icons.add_circle_rounded,
-                      iconColor: Colors.lightBlue,
-                      onTap: () {
-                        setState(() => _isMenuOpen = false);
-                        _showNewCounterDialog();
-                      },
+                  ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 80.0, right: 4.0),
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: _isMenuOpen ? 1.0 : 0.0,
+                    child: IgnorePointer(
+                      ignoring: !_isMenuOpen,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          _buildSpeedDialItem(
+                            label: "Timed Tasks",
+                            icon: Icons.hourglass_top_rounded,
+                            iconColor: Colors.deepPurpleAccent,
+                            onTap: () {
+                              setState(() => _isMenuOpen = false);
+                              _showNewTimedTaskDialog();
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          _buildSpeedDialItem(
+                            label: "Counter List",
+                            icon: Icons.add_circle_rounded,
+                            iconColor: Colors.lightBlue,
+                            onTap: () {
+                              setState(() => _isMenuOpen = false);
+                              _showNewCounterDialog();
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          _buildSpeedDialItem(
+                            label: "To-Do List",
+                            icon: Icons.check_box_rounded,
+                            iconColor: AppColors.cardGreen,
+                            onTap: () {
+                              setState(() => _isMenuOpen = false);
+                              _showNewTodoDialog();
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          _buildSpeedDialItem(
+                            label: "Text Note",
+                            icon: Icons.description_rounded,
+                            iconColor: Colors.amber,
+                            onTap: () {
+                              setState(() => _isMenuOpen = false);
+                              _showNewTextNoteDialog();
+                            },
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 12),
-                    _buildSpeedDialItem(
-                      label: "To-Do List",
-                      icon: Icons.check_box_rounded,
-                      iconColor: AppColors.cardGreen,
-                      onTap: () {
-                        setState(() => _isMenuOpen = false);
-                        _showNewTodoDialog();
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    _buildSpeedDialItem(
-                      label: "Text Note",
-                      icon: Icons.description_rounded,
-                      iconColor: Colors.amber,
-                      onTap: () {
-                        setState(() => _isMenuOpen = false);
-                        _showNewTextNoteDialog();
-                      },
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          ),
-          GestureDetector(
-            onTap: () => setState(() => _isMenuOpen = !_isMenuOpen),
-            child: AnimatedRotation(
-              turns: _isMenuOpen ? 0.125 : 0.0,
-              duration: const Duration(milliseconds: 180),
-              child: Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: _isMenuOpen ? Colors.white : AppColors.cardOrange,
-                  shape: BoxShape.circle,
+                GestureDetector(
+                  onTap: () => setState(() => _isMenuOpen = !_isMenuOpen),
+                  child: AnimatedRotation(
+                    turns: _isMenuOpen ? 0.125 : 0.0,
+                    duration: const Duration(milliseconds: 180),
+                    child: Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: _isMenuOpen
+                            ? Colors.white
+                            : AppColors.cardOrange,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.add,
+                        color: _isMenuOpen
+                            ? AppColors.background
+                            : Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                  ),
                 ),
-                child: Icon(
-                  Icons.add,
-                  color: _isMenuOpen ? AppColors.background : Colors.white,
-                  size: 28,
-                ),
-              ),
+              ],
             ),
-          ),
-        ],
-      ),
 
       bottomNavigationBar: BottomAppBar(
         color: AppColors.navBar,
