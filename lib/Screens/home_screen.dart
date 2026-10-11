@@ -15,6 +15,7 @@ import 'package:fast_companion/services/database_service.dart';
 import 'package:fast_companion/services/local_storage_service.dart';
 import 'package:fast_companion/services/multi_account_auth_service.dart';
 import 'package:fast_companion/services/home_widget_service.dart';
+import 'package:fast_companion/services/reminder_notification_service.dart';
 import '../app_signals.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -213,6 +214,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   }
                 },
               ),
+              const Divider(color: Colors.white24),
+
+              // Timed-task reminders on/off (see _ReminderToggleTile below).
+              const _ReminderToggleTile(),
               const Divider(color: Colors.white24),
 
               ListTile(
@@ -1308,6 +1313,101 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Self-contained row for the Google Account dialog: toggles every
+/// timed-task reminder on/off and surfaces the exact-timing status.
+class _ReminderToggleTile extends StatefulWidget {
+  const _ReminderToggleTile();
+
+  @override
+  State<_ReminderToggleTile> createState() => _ReminderToggleTileState();
+}
+
+class _ReminderToggleTileState extends State<_ReminderToggleTile> {
+  bool _enabled = true;
+  bool _exactAvailable = true;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final enabled = await ReminderNotificationService.isEnabled();
+    final exact = await ReminderNotificationService.canScheduleExact();
+    if (!mounted) return;
+    setState(() {
+      _enabled = enabled;
+      _exactAvailable = exact;
+      _loaded = true;
+    });
+  }
+
+  Future<void> _setEnabled(bool value) async {
+    // Flip immediately — rescheduling a whole account can take a moment.
+    setState(() => _enabled = value);
+
+    if (value) {
+      // (Re-)ask for the Android 13+ notification permission; if it was
+      // already denied, Android just re-denies and the user has to allow
+      // it in system settings.
+      await ReminderNotificationService.requestNotificationPermission();
+      await ReminderNotificationService.setEnabled(true);
+    } else {
+      await ReminderNotificationService.setEnabled(false);
+    }
+
+    final exact = await ReminderNotificationService.canScheduleExact();
+    if (!mounted) return;
+    setState(() => _exactAvailable = exact);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppColors.cardOrange,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      value: _enabled,
+      activeThumbColor: AppColors.cardOrange,
+      title: const Text(
+        "Task reminders",
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+      ),
+      subtitle: (_enabled && !_exactAvailable)
+          ? GestureDetector(
+              onTap: () => ReminderNotificationService.openExactAlarmSettings(),
+              child: const Text(
+                "Exact timing off — tap to enable in system settings",
+                style: TextStyle(color: AppColors.cardOrange, fontSize: 11),
+              ),
+            )
+          : Text(
+              _enabled
+                  ? "Alerts 3d / 1d / 2h / 1h / 30m / 10m / 5m before deadlines"
+                  : "Reminders are turned off",
+              style: const TextStyle(color: Colors.white38, fontSize: 11),
+            ),
+      onChanged: _setEnabled,
     );
   }
 }

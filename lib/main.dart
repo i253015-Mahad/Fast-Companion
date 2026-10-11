@@ -14,6 +14,7 @@ import 'package:home_widget/home_widget.dart';
 import 'models/note.dart';
 import 'services/local_storage_service.dart';
 import 'services/multi_account_auth_service.dart'; // NEW (Fix 3b)
+import 'services/reminder_notification_service.dart';
 import 'app_signals.dart';
 
 // Required so the widget-configuration entry point (used by
@@ -110,6 +111,16 @@ void main() async {
 
   await HomeWidget.registerInteractivityCallback(widgetBackgroundCallback);
 
+  // Reminder notifications carry a `uid|noteId` payload; tapping one opens
+  // that timed note through the same path as the widget's edit button.
+  // (Cold starts launched *by* the tap are handled below via launch details.)
+  ReminderNotificationService.onNotificationTap = (payload) {
+    final parts = payload.split('|');
+    if (parts.length == 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
+      _openNoteFromWidget({'uid': parts[0], 'noteId': parts[1]});
+    }
+  };
+
   // Handles the widget's "edit" (pencil) button while the app is already
   // running. CHANGED (Fix 3b): the handler now just calls the function above.
   _openNoteChannel.setMethodCallHandler((call) async {
@@ -122,6 +133,22 @@ void main() async {
   // NEW (Fix 3b): cold start. If the app was launched by the widget's edit
   // button, MainActivity holds the request until we ask for it here.
   WidgetsBinding.instance.addPostFrameCallback((_) async {
+    // Timed-task reminders: schedule everything first (local, fast), then
+    // ask for the Android 13+ notification permission — at most once.
+    await ReminderNotificationService.syncAll();
+    await ReminderNotificationService.requestPermissionOnce();
+
+    // Or cold start launched by TAPPING a reminder notification — open that
+    // note instead of the widget's pending edit request.
+    final launch = await ReminderNotificationService.launchDetails();
+    if (launch != null && launch.didNotificationLaunchApp) {
+      final parts = (launch.notificationResponse?.payload ?? '').split('|');
+      if (parts.length == 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
+        await _openNoteFromWidget({'uid': parts[0], 'noteId': parts[1]});
+      }
+      return;
+    }
+
     final initial = await _openNoteChannel.invokeMethod<Map<dynamic, dynamic>>(
       'getInitialNote',
     );

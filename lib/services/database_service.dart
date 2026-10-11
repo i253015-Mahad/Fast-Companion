@@ -6,6 +6,7 @@ import '../models/note.dart';
 import 'local_storage_service.dart';
 import 'multi_account_auth_service.dart';
 import 'home_widget_service.dart';
+import 'reminder_notification_service.dart';
 
 class DatabaseService {
   // Fallback used only when there's no per-account session for the uid in
@@ -194,6 +195,12 @@ class DatabaseService {
         fetchedWithTime.sort((a, b) => a.key.compareTo(b.key));
         final fetched = fetchedWithTime.map((e) => e.value).toList();
         await LocalStorageService.saveNotes(activeUid, fetched);
+        // Fresh data from the cloud (possibly edited on another device) —
+        // bring the scheduled reminders in line with it. Not awaited; the
+        // fetch itself already succeeded.
+        ReminderNotificationService.syncAll().catchError((e) {
+          print('⚠️ reminder sync after cloud fetch failed: $e');
+        });
         return; // success — stop retrying
       } catch (e) {
         print('⚠️ syncFromFirebase attempt $attempt failed: $e');
@@ -242,6 +249,16 @@ class DatabaseService {
       } catch (e) {
         print('⚠️ widget refresh after save failed: $e');
       }
+      // Reminders follow the note: re-sync this note's scheduled
+      // notifications after every save (new task, new deadline, item
+      // checked off, note renamed...). Not awaited — scheduling is quick
+      // but must never delay the save itself.
+      ReminderNotificationService.syncNote(
+        targetUid,
+        noteId,
+      ).catchError((e) {
+        print('⚠️ reminder sync failed: $e');
+      });
     }
 
     final remoteWrite = _databaseFor(targetUid)
@@ -319,6 +336,14 @@ class DatabaseService {
     final targetUid = customUid ?? uid;
 
     await LocalStorageService.deleteNote(targetUid, noteId);
+
+    // Its reminders are meaningless without the note — drop them right away.
+    ReminderNotificationService.cancelNote(
+      targetUid,
+      noteId,
+    ).catchError((e) {
+      print('⚠️ reminder cancel failed: $e');
+    });
 
     // Not awaited — same reasoning as above. The note is already gone
     // locally at this point; the remote delete just catches up whenever
