@@ -68,6 +68,12 @@ class NotesWidgetProvider : AppWidgetProvider() {
         // to the list's contents. Stored after every full redraw; when it's
         // unchanged, a content update needs no full redraw.
         private fun chromeSigKey(appWidgetId: Int) = "chrome_sig_$appWidgetId"
+
+        // The list ROWS as last drawn (todoList/counterList JSON). When both
+        // the frame and these rows are unchanged, not even a list rebind is
+        // needed — on some launchers ANY rebind blanks the list for a frame
+        // (visible as a flash), so pointless rebinds are skipped entirely.
+        private fun listSigKey(appWidgetId: Int) = "list_sig_$appWidgetId"
     }
 
     override fun onUpdate(
@@ -87,6 +93,7 @@ class NotesWidgetProvider : AppWidgetProvider() {
             editor.remove("payload_$id")
             editor.remove(checkedExpandedKey(id))
             editor.remove(chromeSigKey(id))
+            editor.remove(listSigKey(id))
             editor.remove(softUpdateKey(id))
             editor.remove("sig_$id") // left over from the earlier shortcut version
             cancelExpiryRefresh(context, id)
@@ -257,13 +264,18 @@ class NotesWidgetProvider : AppWidgetProvider() {
             // frame (title/type/render mode) is unchanged, the list rebind
             // alone shows everything that changed — replacing the whole
             // RemoteViews is what made the widget flash for a frame after a
-            // tap. System requests (boot, launcher restart, first placement)
-            // carry no flag, so they always get the full redraw and the
-            // widget can never be left blank.
+            // tap. If even the list ROWS are unchanged, nothing is redrawn at
+            // all: on some launchers any rebind blanks the list for a frame,
+            // so a pointless rebind is worse than no update. System requests
+            // (boot, launcher restart, first placement) carry no flag, so they
+            // always get the full redraw and the widget can never be blank.
             val isSoft = consumeSoftFlag(prefs, appWidgetId)
             if (isSoft && payloadStr != null) {
                 val storedSig = prefs.getString(chromeSigKey(appWidgetId), null)
                 if (storedSig != null && storedSig == chromeSignature(payloadStr)) {
+                    val newSig = listSignature(payloadStr)
+                    val rowsChanged =
+                        prefs.getString(listSigKey(appWidgetId), null) != newSig
                     try {
                         val payload = JSONObject(payloadStr)
                         if (payload.optString("type") == "todo" ||
@@ -275,10 +287,15 @@ class NotesWidgetProvider : AppWidgetProvider() {
                     } catch (e: Exception) {
                         android.util.Log.e("NotesWidgetProvider", "Soft refresh failed", e)
                     }
-                    appWidgetManager.notifyAppWidgetViewDataChanged(
-                        appWidgetId,
-                        R.id.widget_list
-                    )
+                    if (rowsChanged) {
+                        prefs.edit().putString(listSigKey(appWidgetId), newSig).apply()
+                        appWidgetManager.notifyAppWidgetViewDataChanged(
+                            appWidgetId,
+                            R.id.widget_list
+                        )
+                    }
+                    // Same frame, and (if !rowsChanged) same rows: nothing to
+                    // redraw — a pointless rebind would just flash the list.
                     return
                 }
             }
@@ -299,7 +316,10 @@ class NotesWidgetProvider : AppWidgetProvider() {
                 )
                 views.setViewVisibility(R.id.row_text, View.VISIBLE)
                 appWidgetManager.updateAppWidget(appWidgetId, views)
-                prefs.edit().putString(chromeSigKey(appWidgetId), "blank").apply()
+                prefs.edit()
+                    .putString(chromeSigKey(appWidgetId), "blank")
+                    .putString(listSigKey(appWidgetId), "[]")
+                    .apply()
                 return
             }
 
@@ -369,10 +389,12 @@ class NotesWidgetProvider : AppWidgetProvider() {
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
             appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list)
-            // Remember what the frame shows, so a later content-only update
-            // can skip the (flashing) full redraw — see the soft path above.
+            // Remember what the frame shows and which rows are on screen, so a
+            // later content-only update can skip the (flashing) redraws — see
+            // the soft path above.
             prefs.edit()
                 .putString(chromeSigKey(appWidgetId), chromeSignature(payloadStr))
+                .putString(listSigKey(appWidgetId), listSignature(payloadStr))
                 .apply()
         } catch (e: Exception) {
             android.util.Log.e("NotesWidgetProvider", "Failed to update widget", e)
@@ -402,6 +424,24 @@ class NotesWidgetProvider : AppWidgetProvider() {
         val type = p.optString("type", "text")
         val body = if (type == "text") p.optString("body", "No content") else ""
         "$type\u0001${p.optString("title", "Untitled")}\u0001${p.optString("noteId")}\u0001$body"
+    } catch (e: Exception) {
+        "corrupt"
+    }
+
+    /**
+     * The list ROWS exactly as they'd be rendered (todoList/counterList JSON).
+     * Compared before a content update decides to rebind: identical rows mean
+     * a rebind would only flash the list for no visual change. Raw
+     * remaining/due timestamps are fine here — a soft update only fires when
+     * Dart saw a real difference, so any mismatch it sends through is a real
+     * one.
+     */
+    private fun listSignature(payloadStr: String): String = try {
+        val p = JSONObject(payloadStr)
+        when (p.optString("type")) {
+            "counter" -> p.optJSONArray("counterList")?.toString() ?: "[]"
+            else -> p.optJSONArray("todoList")?.toString() ?: "[]"
+        }
     } catch (e: Exception) {
         "corrupt"
     }
