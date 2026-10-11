@@ -13,6 +13,22 @@ class HomeWidgetService {
   static const _kIds = 'widget_ids';
   static String _payloadKey(int widgetId) => 'payload_$widgetId';
 
+  /// Key prefix stamped on widget data before an updateWidget broadcast that
+  /// only changes CONTENT (title/type/frame unchanged). Lets the Kotlin
+  /// provider answer with a list rebind instead of a full redraw, which is
+  /// what used to make the widget flash for a frame after a tap. Must match
+  /// SOFT_UPDATE_PREFIX in NotesWidgetProvider.kt.
+  static const _kSoftUpdatePrefix = 'soft_update_';
+
+  /// Flags [ids] as content-only updates, then triggers the broadcast.
+  static Future<void> _requestContentUpdate(List<int> ids) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final id in ids) {
+      await HomeWidget.saveWidgetData<int>('$_kSoftUpdatePrefix$id', now);
+    }
+    await HomeWidget.updateWidget(androidName: _androidWidgetName);
+  }
+
   // ---------- id bookkeeping ----------
 
   /// Ids of widgets that still exist. NotesWidgetProvider.onDeleted removes a
@@ -77,7 +93,17 @@ class HomeWidgetService {
   static bool _same(Object? a, Object? b, [String? key]) {
     if (a is Map && b is Map) {
       if (a.length != b.length) return false;
+      // The widget only renders 'body' for plain TEXT notes; for todo/timed/
+      // counter notes it's just a preview of the list, which the Kotlin side
+      // derives from the list rows itself. Kotlin's instant tap update doesn't
+      // rewrite the preview, so comparing it would make every tap look like a
+      // change and fire a second widget update — visible as a flash. A body
+      // that genuinely differs for a list note still gets saved; it just
+      // doesn't need a redraw.
+      final type = a['type'];
+      final ignoreBody = type != null && type != 'text';
       for (final k in a.keys) {
+        if (k == 'body' && ignoreBody) continue;
         if (!b.containsKey(k) || !_same(a[k], b[k], k.toString())) return false;
       }
       return true;
@@ -109,14 +135,16 @@ class HomeWidgetService {
       ids.add(widgetId);
       await _saveIds(ids);
     }
-    await HomeWidget.updateWidget(androidName: _androidWidgetName);
+    // Marked as content-only: if the pinned note's frame (title/type) is
+    // unchanged the provider rebinds the list without a flashing redraw.
+    await _requestContentUpdate([widgetId]);
   }
 
   /// Rewrites every widget currently showing this exact note. Used by the
   /// background (widget tap) handler. CHANGED: skips widgets that already show
   /// exactly this, so a tap doesn't cause a pointless redraw.
   static Future<void> refreshNote(String uid, Note note) async {
-    var touched = false;
+    final touched = <int>[];
     final fresh = _normalized(_buildPayload(uid, note));
     for (final id in await widgetIds()) {
       final p = await _readPayload(id);
@@ -126,10 +154,10 @@ class HomeWidgetService {
         _payloadKey(id),
         jsonEncode(fresh),
       );
-      touched = true;
+      touched.add(id);
     }
-    if (touched) {
-      await HomeWidget.updateWidget(androidName: _androidWidgetName);
+    if (touched.isNotEmpty) {
+      await _requestContentUpdate(touched);
     }
   }
 
@@ -140,7 +168,7 @@ class HomeWidgetService {
   /// list failed to load, not that the note was deleted).
   static Future<void> syncIfNeeded(String? uid, List<Note> currentNotes) async {
     if (uid == null) return;
-    var touched = false;
+    final touched = <int>[];
     for (final id in await widgetIds()) {
       final p = await _readPayload(id);
       if (p == null || p['uid'] != uid) continue;
@@ -148,7 +176,7 @@ class HomeWidgetService {
       if (matches.isEmpty) {
         if (currentNotes.isEmpty) continue;
         await HomeWidget.saveWidgetData<String>(_payloadKey(id), '');
-        touched = true;
+        touched.add(id);
       } else {
         final fresh = _normalized(_buildPayload(uid, matches.first));
         if (_same(p, fresh)) continue; // already up to date
@@ -156,26 +184,26 @@ class HomeWidgetService {
           _payloadKey(id),
           jsonEncode(fresh),
         );
-        touched = true;
+        touched.add(id);
       }
     }
-    if (touched) {
-      await HomeWidget.updateWidget(androidName: _androidWidgetName);
+    if (touched.isNotEmpty) {
+      await _requestContentUpdate(touched);
     }
   }
 
   /// Blanks every widget showing a note from [uid] (used on sign-out).
   static Future<void> clearForUid(String uid) async {
-    var touched = false;
+    final touched = <int>[];
     for (final id in await widgetIds()) {
       final p = await _readPayload(id);
       if (p != null && p['uid'] == uid) {
         await HomeWidget.saveWidgetData<String>(_payloadKey(id), '');
-        touched = true;
+        touched.add(id);
       }
     }
-    if (touched) {
-      await HomeWidget.updateWidget(androidName: _androidWidgetName);
+    if (touched.isNotEmpty) {
+      await _requestContentUpdate(touched);
     }
   }
 

@@ -39,6 +39,35 @@ class NotesWidgetProvider : AppWidgetProvider() {
     companion object {
         // Every tap on a list row comes here first (see attachList).
         const val ACTION_ITEM_CLICK = "com.mahad.fastcompanion.ACTION_ITEM_CLICK"
+
+        // The widget's own refresh tick. Countdowns are plain text recomputed
+        // at every rebind (a launcher-ticked Chronometer freezes at random
+        // after rebinds, API 26+), so while a countdown is on screen we drive
+        // our own refreshes: every minute boundary while a task is due within
+        // 24h, every hour boundary while tasks are due further out, none
+        // otherwise.
+        const val ACTION_TICK = "com.mahad.fastcompanion.ACTION_TICK"
+
+        // A task shows a per-minute countdown when due within this long.
+        // Further away it shows static text like "2d 3h left" (hourly refresh).
+        private const val LIVE_COUNTDOWN_MAX_MS = 24L * 60 * 60 * 1000
+
+        // Keeps tick PendingIntents separate from the expiry-refresh one
+        // (same action+component+requestCode would be the SAME PendingIntent).
+        private const val TICK_REQUEST_CODE_OFFSET = 1_000_000
+
+        // Dart stamps its post-save updateWidget broadcasts with this flag
+        // (key + timestamp). Within SOFT_UPDATE_VALID_MS we may answer with a
+        // list rebind only instead of replacing the whole RemoteViews — that
+        // replacement is what made the widget flash for a frame after a tap.
+        private const val SOFT_UPDATE_PREFIX = "soft_update_"
+        private const val SOFT_UPDATE_VALID_MS = 10_000L
+        private fun softUpdateKey(appWidgetId: Int) = "$SOFT_UPDATE_PREFIX$appWidgetId"
+
+        // What the widget's FRAME shows (title/type/render mode), as opposed
+        // to the list's contents. Stored after every full redraw; when it's
+        // unchanged, a content update needs no full redraw.
+        private fun chromeSigKey(appWidgetId: Int) = "chrome_sig_$appWidgetId"
     }
 
     override fun onUpdate(
@@ -57,22 +86,58 @@ class NotesWidgetProvider : AppWidgetProvider() {
         for (id in appWidgetIds) {
             editor.remove("payload_$id")
             editor.remove(checkedExpandedKey(id))
+            editor.remove(chromeSigKey(id))
+            editor.remove(softUpdateKey(id))
             editor.remove("sig_$id") // left over from the earlier shortcut version
             cancelExpiryRefresh(context, id)
+            cancelNextTick(context, id)
         }
         editor.apply()
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == ACTION_ITEM_CLICK) {
-            try {
-                handleItemClick(context, intent.data)
-            } catch (e: Exception) {
-                android.util.Log.e("NotesWidgetProvider", "Tap handling failed", e)
+        when (intent.action) {
+            ACTION_ITEM_CLICK -> {
+                try {
+                    handleItemClick(context, intent.data)
+                } catch (e: Exception) {
+                    android.util.Log.e("NotesWidgetProvider", "Tap handling failed", e)
+                }
             }
+
+            ACTION_TICK -> {
+                val widgetId = intent.getIntExtra(
+                    AppWidgetManager.EXTRA_APPWIDGET_ID,
+                    AppWidgetManager.INVALID_APPWIDGET_ID
+                )
+                if (widgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                    try {
+                        handleTick(context, widgetId)
+                    } catch (e: Exception) {
+                        android.util.Log.e("NotesWidgetProvider", "Tick handling failed", e)
+                    }
+                }
+            }
+
+            else -> super.onReceive(context, intent)
+        }
+    }
+
+    /**
+     * Self-driven countdown refresh: rebind the list (which recomputes every
+     * row's text from the CURRENT time), then schedule the next tick. Only a
+     * data-changed notification, NOT a full redraw — keeps the list's scroll
+     * position.
+     */
+    private fun handleTick(context: Context, appWidgetId: Int) {
+        AppWidgetManager.getInstance(context)
+            .notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list)
+        val raw = HomeWidgetPlugin.getData(context).getString("payload_$appWidgetId", null)
+        if (raw.isNullOrEmpty()) {
+            cancelNextTick(context, appWidgetId)
             return
         }
-        super.onReceive(context, intent)
+        scheduleNextTick(context, appWidgetId, JSONObject(raw))
     }
 
     /**
@@ -90,6 +155,9 @@ class NotesWidgetProvider : AppWidgetProvider() {
             val key = checkedExpandedKey(widgetId)
             val isOpen = prefs.getBoolean(key, DEFAULT_CHECKED_EXPANDED)
             prefs.edit().putBoolean(key, !isOpen).apply()
+            // Rebind only: the payload is untouched, so there's nothing to
+            // redraw beyond the list itself — and a full redraw here would
+            // just flash the widget for a frame.
             AppWidgetManager.getInstance(context)
                 .notifyAppWidgetViewDataChanged(widgetId, R.id.widget_list)
         } else {
@@ -180,16 +248,49 @@ class NotesWidgetProvider : AppWidgetProvider() {
         appWidgetId: Int
     ) {
         try {
+            val prefs = HomeWidgetPlugin.getData(context)
+            val payloadStr = prefs.getString("payload_$appWidgetId", null)
+
+            // ---- flash-free content updates --------------------------------
+            // Dart stamps the broadcasts it sends after saving a tap with a
+            // short-lived flag. When such an update arrives AND the widget's
+            // frame (title/type/render mode) is unchanged, the list rebind
+            // alone shows everything that changed — replacing the whole
+            // RemoteViews is what made the widget flash for a frame after a
+            // tap. System requests (boot, launcher restart, first placement)
+            // carry no flag, so they always get the full redraw and the
+            // widget can never be left blank.
+            val isSoft = consumeSoftFlag(prefs, appWidgetId)
+            if (isSoft && payloadStr != null) {
+                val storedSig = prefs.getString(chromeSigKey(appWidgetId), null)
+                if (storedSig != null && storedSig == chromeSignature(payloadStr)) {
+                    try {
+                        val payload = JSONObject(payloadStr)
+                        if (payload.optString("type") == "todo" ||
+                            payload.optString("type") == "timed"
+                        ) {
+                            scheduleExpiryRefresh(context, appWidgetId, payload)
+                            scheduleNextTick(context, appWidgetId, payload)
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("NotesWidgetProvider", "Soft refresh failed", e)
+                    }
+                    appWidgetManager.notifyAppWidgetViewDataChanged(
+                        appWidgetId,
+                        R.id.widget_list
+                    )
+                    return
+                }
+            }
+
             val views = RemoteViews(context.packageName, R.layout.notes_widget_layout)
 
             views.setViewVisibility(R.id.row_text, View.GONE)
             views.setViewVisibility(R.id.widget_list, View.GONE)
 
-            val prefs = HomeWidgetPlugin.getData(context)
-            val payloadStr = prefs.getString("payload_$appWidgetId", null)
-
             if (payloadStr.isNullOrEmpty()) {
                 cancelExpiryRefresh(context, appWidgetId)
+                cancelNextTick(context, appWidgetId)
                 views.setTextViewText(R.id.widget_title, "No note pinned")
                 views.setViewVisibility(R.id.btn_edit, View.GONE)
                 views.setTextViewText(
@@ -198,6 +299,7 @@ class NotesWidgetProvider : AppWidgetProvider() {
                 )
                 views.setViewVisibility(R.id.row_text, View.VISIBLE)
                 appWidgetManager.updateAppWidget(appWidgetId, views)
+                prefs.edit().putString(chromeSigKey(appWidgetId), "blank").apply()
                 return
             }
 
@@ -219,10 +321,12 @@ class NotesWidgetProvider : AppWidgetProvider() {
                         attachList(context, views, appWidgetId)
                     }
                     scheduleExpiryRefresh(context, appWidgetId, payload)
+                    scheduleNextTick(context, appWidgetId, payload)
                 }
 
                 "counter" -> {
                     cancelExpiryRefresh(context, appWidgetId)
+                    cancelNextTick(context, appWidgetId)
                     val count = payload.optJSONArray("counterList")?.length() ?: 0
                     if (count == 0) {
                         views.setViewVisibility(R.id.row_text, View.VISIBLE)
@@ -234,6 +338,7 @@ class NotesWidgetProvider : AppWidgetProvider() {
 
                 else -> {
                     cancelExpiryRefresh(context, appWidgetId)
+                    cancelNextTick(context, appWidgetId)
                     val body = payload.optString("body", "No content")
                     views.setViewVisibility(R.id.row_text, View.VISIBLE)
                     views.setTextViewText(R.id.row_text, body)
@@ -264,9 +369,41 @@ class NotesWidgetProvider : AppWidgetProvider() {
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
             appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list)
+            // Remember what the frame shows, so a later content-only update
+            // can skip the (flashing) full redraw — see the soft path above.
+            prefs.edit()
+                .putString(chromeSigKey(appWidgetId), chromeSignature(payloadStr))
+                .apply()
         } catch (e: Exception) {
             android.util.Log.e("NotesWidgetProvider", "Failed to update widget", e)
         }
+    }
+
+    /**
+     * True when Dart flagged this update as a post-save content refresh
+     * (see _requestContentUpdate in home_widget_service.dart). Consumes the
+     * flag, so a stale one can never make a later SYSTEM update go soft.
+     */
+    private fun consumeSoftFlag(prefs: android.content.SharedPreferences, appWidgetId: Int): Boolean {
+        val key = softUpdateKey(appWidgetId)
+        val ts = (prefs.all[key] as? Number)?.toLong() ?: 0L
+        prefs.edit().remove(key).apply()
+        return ts > 0 && System.currentTimeMillis() - ts < SOFT_UPDATE_VALID_MS
+    }
+
+    /**
+     * The widget's FRAME: everything a full redraw (but not a list rebind)
+     * would change. Note the body is only part of the frame for text notes —
+     * for todo/timed/counter notes the body is just a preview of the list,
+     * which a rebind already reflects.
+     */
+    private fun chromeSignature(payloadStr: String): String = try {
+        val p = JSONObject(payloadStr)
+        val type = p.optString("type", "text")
+        val body = if (type == "text") p.optString("body", "No content") else ""
+        "$type\u0001${p.optString("title", "Untitled")}\u0001${p.optString("noteId")}\u0001$body"
+    } catch (e: Exception) {
+        "corrupt"
     }
 
     /** Shows the scrolling list and wires up tapping on its rows. */
@@ -296,9 +433,11 @@ class NotesWidgetProvider : AppWidgetProvider() {
 
     // ---- expiry refresh -------------------------------------------------
     // A ticking countdown keeps counting past zero. To avoid that, schedule
-    // ONE refresh just after the soonest due time among un-ticked tasks. It
-    // is an inexact alarm (no special permission), so Android may delay it a
-    // little when the phone is idle.
+    // ONE refresh just after the soonest due time among un-ticked tasks.
+    // Exact (and allow-while-idle) when the SCHEDULE_EXACT_ALARM permission
+    // is granted, so the flip to "Time expired" happens within a second even
+    // with the screen off. Falls back to setAndAllowWhileIdle — still fires
+    // in Doze, permission-free — when Android 14+ has denied exact alarms.
 
     private fun expiryPendingIntent(context: Context, appWidgetId: Int): PendingIntent {
         val intent = Intent(context, NotesWidgetProvider::class.java).apply {
@@ -329,7 +468,13 @@ class NotesWidgetProvider : AppWidgetProvider() {
                 if (due > now && due < next) next = due
             }
             if (next != Long.MAX_VALUE) {
-                alarmManager.set(AlarmManager.RTC, next + 1000, pending)
+                val triggerAt = next + 1000
+                val canExact = Build.VERSION.SDK_INT >= 31 && alarmManager.canScheduleExactAlarms()
+                if (canExact) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC, triggerAt, pending)
+                } else {
+                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC, triggerAt, pending)
+                }
             }
         } catch (e: Exception) {
             android.util.Log.e("NotesWidgetProvider", "Failed to schedule expiry refresh", e)
@@ -342,6 +487,71 @@ class NotesWidgetProvider : AppWidgetProvider() {
             alarmManager.cancel(expiryPendingIntent(context, appWidgetId))
         } catch (e: Exception) {
             android.util.Log.e("NotesWidgetProvider", "Failed to cancel expiry refresh", e)
+        }
+    }
+
+    // ---- self-driven countdown ticks --------------------------------------
+    // Countdown text is only as fresh as the last rebind, so while one is on
+    // screen we keep rebinds coming on our own: at every MINUTE boundary
+    // while an unchecked task is due within 24h (the per-minute window), at
+    // every HOUR boundary when tasks are due but only further out, and never
+    // when nothing is ticking. Exact when allowed, otherwise
+    // setAndAllowWhileIdle (permission-free, still fires in Doze).
+
+    private fun tickPendingIntent(context: Context, appWidgetId: Int): PendingIntent {
+        val intent = Intent(context, NotesWidgetProvider::class.java).apply {
+            action = ACTION_TICK
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            appWidgetId + TICK_REQUEST_CODE_OFFSET,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun scheduleNextTick(context: Context, appWidgetId: Int, payload: JSONObject) {
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val pending = tickPendingIntent(context, appWidgetId)
+            alarmManager.cancel(pending)
+
+            val items = payload.optJSONArray("todoList") ?: return
+            val now = System.currentTimeMillis()
+            var next = Long.MAX_VALUE
+            for (i in 0 until items.length()) {
+                val item = items.getJSONObject(i)
+                if (item.optBoolean("isDone", false) || item.isNull("dueMs")) continue
+                val due = item.getLong("dueMs")
+                if (due > now && due < next) next = due
+            }
+            if (next == Long.MAX_VALUE) return
+
+            // Next minute boundary in the live window, else next hour
+            // boundary (static "2d 3h left" text only needs hourly accuracy).
+            val triggerAt = if (next - now <= LIVE_COUNTDOWN_MAX_MS) {
+                (now / 60_000 + 1) * 60_000
+            } else {
+                (now / 3_600_000 + 1) * 3_600_000
+            }
+            val canExact = Build.VERSION.SDK_INT >= 31 && alarmManager.canScheduleExactAlarms()
+            if (canExact) {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC, triggerAt, pending)
+            } else {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC, triggerAt, pending)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("NotesWidgetProvider", "Failed to schedule countdown tick", e)
+        }
+    }
+
+    private fun cancelNextTick(context: Context, appWidgetId: Int) {
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.cancel(tickPendingIntent(context, appWidgetId))
+        } catch (e: Exception) {
+            android.util.Log.e("NotesWidgetProvider", "Failed to cancel countdown tick", e)
         }
     }
 }

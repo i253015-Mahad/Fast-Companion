@@ -4,8 +4,6 @@ import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
-import android.os.SystemClock
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.StrikethroughSpan
@@ -23,12 +21,6 @@ internal const val DEFAULT_CHECKED_EXPANDED = false
 
 /** Where each widget remembers whether its checked items are open. */
 internal fun checkedExpandedKey(appWidgetId: Int) = "checked_expanded_$appWidgetId"
-
-/**
- * A task shows a LIVE ticking countdown when it is due within this long.
- * Further away than this it shows static text like "2d 3h left".
- */
-private const val LIVE_COUNTDOWN_MAX_MS = 24L * 60 * 60 * 1000
 
 /** One line in the widget list. */
 private sealed class Row {
@@ -171,27 +163,17 @@ private class NotesWidgetFactory(
             if (isDone) R.drawable.ic_checkbox_checked else R.drawable.ic_checkbox_unchecked
         )
 
-        // Live countdown (Chronometer is ticked by the launcher, not the app).
-        val liveMs = liveRemainingMs(item)
-        if (liveMs != null && Build.VERSION.SDK_INT >= 24) {
-            views.setViewVisibility(R.id.item_meta, View.GONE)
-            views.setViewVisibility(R.id.item_countdown, View.VISIBLE)
-            views.setChronometerCountDown(R.id.item_countdown, true)
-            views.setChronometer(
-                R.id.item_countdown,
-                SystemClock.elapsedRealtime() + liveMs,
-                "%s left",
-                true
-            )
+        // Countdown as plain text. No Chronometer: the launcher only starts a
+        // RemoteViews chronometer when isShown() happens to be true at bind
+        // time (API 26+), so it froze at random after list rebinds. The text
+        // is instead recomputed at every refresh (see ACTION_TICK in the
+        // provider), which can never freeze.
+        val meta = formatMeta(item)
+        if (meta.isNotEmpty()) {
+            views.setTextViewText(R.id.item_meta, meta)
+            views.setViewVisibility(R.id.item_meta, View.VISIBLE)
         } else {
-            views.setViewVisibility(R.id.item_countdown, View.GONE)
-            val meta = formatMeta(item)
-            if (meta.isNotEmpty()) {
-                views.setTextViewText(R.id.item_meta, meta)
-                views.setViewVisibility(R.id.item_meta, View.VISIBLE)
-            } else {
-                views.setViewVisibility(R.id.item_meta, View.GONE)
-            }
+            views.setViewVisibility(R.id.item_meta, View.GONE)
         }
 
         views.setOnClickFillInIntent(R.id.todo_item_root, fillIn("toggleTodo", index, null))
@@ -216,12 +198,6 @@ private class NotesWidgetFactory(
         )
     }
 
-    private fun liveRemainingMs(item: JSONObject): Long? {
-        if (item.optBoolean("isDone", false) || item.isNull("dueMs")) return null
-        val diff = item.getLong("dueMs") - System.currentTimeMillis()
-        return if (diff > 0 && diff <= LIVE_COUNTDOWN_MAX_MS) diff else null
-    }
-
     private fun formatMeta(item: JSONObject): String {
         val isDone = item.optBoolean("isDone", false)
         if (isDone && !item.isNull("remainingMs")) {
@@ -233,6 +209,9 @@ private class NotesWidgetFactory(
                 return if (type == "timed") "Time expired"
                 else "Overdue by ${formatDuration(-diff)}"
             }
+            // The expiry alarm flips it to "Time expired" right at the
+            // deadline, so the last minute never needs a negative/zero count.
+            if (diff < 60_000) return "less than a minute left"
             return "${formatDuration(diff)} left"
         }
         if (!item.isNull("remainingMs")) {

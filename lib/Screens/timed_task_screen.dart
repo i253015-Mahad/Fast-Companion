@@ -37,14 +37,8 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
     super.initState();
     _titleController = TextEditingController(text: widget.note.title);
     _timedItems = List.from(widget.note.todoList ?? []);
-    if (_timedItems.isEmpty) {
-      _timedItems.add(
-        TodoItem(
-          text: "",
-          dueDateTime: DateTime.now().add(const Duration(days: 2)),
-        ),
-      );
-    }
+    // No auto-created rows: an empty note stays empty until the user adds a
+    // task themselves (see the add button / "next" flow).
     for (var _ in _timedItems) _focusNodes.add(FocusNode());
     _sortTasksByUrgency();
     _tickerTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -72,14 +66,6 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
     setState(() {
       _titleController.text = fresh!.title;
       _timedItems = List.from(fresh.todoList);
-      if (_timedItems.isEmpty) {
-        _timedItems.add(
-          TodoItem(
-            text: "",
-            dueDateTime: DateTime.now().add(const Duration(days: 2)),
-          ),
-        );
-      }
       for (final f in _focusNodes) {
         f.dispose();
       }
@@ -105,7 +91,10 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
     final previewBody = savedList.isEmpty
         ? "No active timed tasks"
         : savedList
-              .map((i) => "⏳ ${i.text} (${_parseCountdown(i)})")
+              .map(
+                (i) =>
+                    "⏳ ${i.text} (${i.dueDateTime == null ? "no date" : _parseCountdown(i)})",
+              )
               .join('\n');
     final firebaseTodoList = savedList
         .map(
@@ -147,33 +136,68 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
     return diff.isNegative ? Duration.zero : diff;
   }
 
-  Future<void> _createNewItemRow(int currentIndex) async {
-    final DateTime? chosenDateTime = await _pickDateTime(context);
-    if (chosenDateTime == null) return;
+  /// Inserts a new EMPTY row (no date yet) after [item] — or at the end when
+  /// [item] is null — and focuses its label field. No dialogs: the due date
+  /// is asked for later, when the label is submitted (see [_onLabelSubmitted]).
+  void _createNewItemRow({TodoItem? after}) {
+    final node = FocusNode();
     setState(() {
-      _timedItems.insert(
-        currentIndex + 1,
-        TodoItem(text: "", dueDateTime: chosenDateTime),
-      );
-      _focusNodes.insert(currentIndex + 1, FocusNode());
-      _sortTasksByUrgency();
+      final insertAt = after == null ? _timedItems.length : _timedItems.indexOf(after) + 1;
+      _timedItems.insert(insertAt, TodoItem(text: "", dueDateTime: null));
+      _focusNodes.insert(insertAt, node);
+    });
+    // Focus after the new row actually exists on screen.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) node.requestFocus();
     });
   }
 
-  void _removeItemRow(int index) {
-    if (_timedItems.length == 1) {
-      setState(
-        () => _timedItems[0] = TodoItem(
-          text: "",
-          dueDateTime: DateTime.now().add(const Duration(hours: 1)),
-        ),
-      );
+  /// Label field submitted ("next" on the keyboard or a new row):
+  ///  - labelled, no date yet -> ask for the date, attach it, done;
+  ///  - already has a date   -> start the next task (new empty row);
+  ///  - still empty          -> nothing.
+  Future<void> _onLabelSubmitted(TodoItem item) async {
+    if (item.text.trim().isEmpty) return;
+    if (item.dueDateTime != null) {
+      _createNewItemRow(after: item);
       return;
     }
+    final picked = await _pickDateTime(context);
+    if (!mounted) return;
+    if (picked == null) {
+      // Cancelled the date picker: go back to asking for the label. If the
+      // label is empty too (user went back again), discard the row.
+      if (item.text.trim().isEmpty) {
+        _removeItemRow(item);
+      } else {
+        final i = _timedItems.indexOf(item);
+        if (i >= 0 && _focusNodes.length > i) _focusNodes[i].requestFocus();
+      }
+      return;
+    }
+    setState(() => item.dueDateTime = picked);
+  }
+
+  /// Tap on a row's countdown / "tap to set date" text: change its due date.
+  /// Uses the item itself, not an index — the 1s ticker re-sorts the list
+  /// under us, which would make a stale index point at the wrong task.
+  Future<void> _editDueDate(TodoItem item) async {
+    final picked = await _pickDateTime(context);
+    if (picked == null || !mounted) return;
+    setState(() => item.dueDateTime = picked);
+  }
+
+  /// Same as before, except removing the LAST row leaves the list empty —
+  /// rows only exist when the user adds one.
+  void _removeItemRow(TodoItem item) {
+    final index = _timedItems.indexOf(item);
+    if (index < 0) return;
     setState(() {
       _timedItems.removeAt(index);
-      _focusNodes[index].dispose();
-      _focusNodes.removeAt(index);
+      if (_focusNodes.length > index) {
+        _focusNodes[index].dispose();
+        _focusNodes.removeAt(index);
+      }
     });
   }
 
@@ -194,6 +218,9 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
   }
 
   String _parseCountdown(TodoItem item) {
+    if (item.dueDateTime == null && item.remainingDuration == null) {
+      return "tap to set date";
+    }
     final difference = _getRemainingDuration(item);
     if (difference == Duration.zero) return "Time expired";
     final days = difference.inDays;
@@ -242,27 +269,41 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
           border: InputBorder.none,
         ),
         onChanged: (text) => item.text = text,
-        onFieldSubmitted: (_) => _createNewItemRow(index),
+        onFieldSubmitted: (_) => _onLabelSubmitted(item),
       ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            _parseCountdown(item),
-            style: TextStyle(
-              color: item.isDone
-                  ? Colors.white24
-                  : (_parseCountdown(item).contains('s left') ||
-                            _parseCountdown(item).contains('m left')
-                        ? AppColors.cardOrange
-                        : Colors.white60),
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
+          // Countdown is tappable: opens the date picker to set/change the
+          // due date. Undated rows show "tap to set date".
+          InkWell(
+            onTap: () => _editDueDate(item),
+            borderRadius: BorderRadius.circular(4),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+              child: Text(
+                _parseCountdown(item),
+                style: TextStyle(
+                  color: item.isDone
+                      ? Colors.white24
+                      : (_parseCountdown(item) == "tap to set date"
+                            ? Colors.white38
+                            : (_parseCountdown(item).contains('s left') ||
+                                          _parseCountdown(item).contains('m left')
+                                      ? AppColors.cardOrange
+                                      : Colors.white60)),
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  fontStyle: _parseCountdown(item) == "tap to set date"
+                      ? FontStyle.italic
+                      : FontStyle.normal,
+                ),
+              ),
             ),
           ),
           IconButton(
             icon: const Icon(Icons.close, color: Colors.white38, size: 18),
-            onPressed: () => _removeItemRow(index),
+            onPressed: () => _removeItemRow(item),
           ),
         ],
       ),
@@ -273,6 +314,16 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
   /// when open) the checked tasks. _timedItems is always sorted with unchecked
   /// tasks first, so the first [uncheckedCount] entries are the unchecked ones.
   Widget _buildTimedList() {
+    // Nothing added yet: a friendly hint instead of a blank void. Rows only
+    // exist when the user adds one (no auto-created default row).
+    if (_timedItems.isEmpty) {
+      return const Center(
+        child: Text(
+          "Tap + to add a task",
+          style: TextStyle(color: Colors.white24, fontSize: 15),
+        ),
+      );
+    }
     final checkedCount = _timedItems.where((i) => i.isDone).length;
     final uncheckedCount = _timedItems.length - checkedCount;
     final hasHeader = checkedCount > 0;
@@ -352,7 +403,7 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
         floatingActionButton: FloatingActionButton(
           backgroundColor: AppColors.cardOrange,
           child: const Icon(Icons.add, color: Colors.white),
-          onPressed: () => _createNewItemRow(_timedItems.length - 1),
+          onPressed: () => _createNewItemRow(),
         ),
       ),
     );
