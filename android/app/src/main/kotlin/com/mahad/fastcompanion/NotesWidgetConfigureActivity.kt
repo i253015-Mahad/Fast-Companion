@@ -57,6 +57,17 @@ class NotesWidgetConfigureActivity : FlutterActivity() {
                         result.success(null)
                         finish()
                     }
+                    // Lets Dart end the setup explicitly WITHOUT placing the
+                    // widget (e.g. the note screen's back button when only
+                    // one account is signed in).
+                    "configCancel" -> {
+                        setResult(
+                            Activity.RESULT_CANCELED,
+                            Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                        )
+                        result.success(null)
+                        finish()
+                    }
                     else -> result.notImplemented()
                 }
             }

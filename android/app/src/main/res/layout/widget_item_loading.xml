@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- NEW. Shown for a split second while a list row is being prepared.
+     Android's default for this is the text "Loading...", which is what
+     flashed in the screen recording. An empty row is invisible instead. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="40dp" />

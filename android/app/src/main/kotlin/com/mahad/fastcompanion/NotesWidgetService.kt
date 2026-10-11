@@ -253,7 +253,8 @@ private class NotesWidgetFactory(
         }
     }
 
-    override fun getLoadingView(): RemoteViews? = null
+    override fun getLoadingView(): RemoteViews? =
+    RemoteViews(context.packageName, R.layout.widget_item_loading)
     // Three row layouts: task, counter, and the checked-items header.
     override fun getViewTypeCount(): Int = 3
     override fun getItemId(position: Int): Long = position.toLong()

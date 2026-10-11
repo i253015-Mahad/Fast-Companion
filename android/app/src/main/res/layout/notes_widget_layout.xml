@@ -28,7 +28,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="No note pinned"
+            android:text="no notes pinned"
             android:textColor= "@color/widget_text"
             android:textSize="22sp"
             android:textStyle="bold"
@@ -43,6 +43,7 @@
             android:layout_height="32dp"
             android:background="@android:color/transparent"
             android:src="@drawable/ic_edit"
+            
             android:contentDescription="Edit note" />
     </LinearLayout>
 

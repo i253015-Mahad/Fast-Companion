@@ -5,20 +5,28 @@
 // widget. It's wired up via home_widget's interactivity callback
 // (HomeWidget.registerInteractivityCallback in main.dart).
 //
+// SPEED: the widget already shows the tapped change instantly (the Kotlin
+// provider applies it before this code even starts). This code's job is the
+// slow part: saving to Firebase and the local cache, then writing the REAL
+// value back to the widget.
+//
 // The actual counter/todo value is always sourced from a Firebase
 // transaction (see runTransaction calls below), which reads whatever the
-// server's true current value is at write time. This is what makes the
-// widget's writes immune to any local-cache staleness.
+// server's true current value is at write time.
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:home_widget/home_widget.dart';
 
 import 'firebase_options.dart';
 import 'models/note.dart';
 import 'services/local_storage_service.dart';
 import 'services/multi_account_auth_service.dart';
 import 'services/home_widget_service.dart';
-import 'services/note_preview.dart'; // NEW (Fix 6)
+import 'services/note_preview.dart';
+
+// Must match PENDING_TAPS_KEY in NotesWidgetProvider.kt.
+const String _kPendingTaps = 'pending_taps';
 
 Future<void> _ensureFirebase() async {
   // If this headless engine shares the app's process with an already-
@@ -31,10 +39,51 @@ Future<void> _ensureFirebase() async {
   }
 }
 
+// NEW: taps are handled ONE AT A TIME. Two taps used to run at once, each
+// reading the same saved notes and each saving over the other's change.
+Future<void> _tapQueue = Future<void>.value();
+
 /// Called from the tiny `widgetBackgroundCallback()` wrapper that must live
 /// in main.dart itself — same rule as the widget configuration entry point.
-Future<void> runWidgetBackgroundAction(Uri? uri) async {
+Future<void> runWidgetBackgroundAction(Uri? uri) {
+  final run = _tapQueue.then((_) => _handleTap(uri));
+  _tapQueue = run.catchError((_) {});
+  return run;
+}
+
+/// NEW: writes the real note value back to the widget — but only when no
+/// other tap is still waiting. Otherwise a quick series of taps (+ + +) would
+/// bounce back to a half-finished value between taps. The last tap in the
+/// series does the final refresh.
+Future<void> _refreshWidgetIfIdle(String uid, Note note) async {
+  final pending = await HomeWidget.getWidgetData<int>(_kPendingTaps) ?? 0;
+  // This tap itself still counts as 1 until _finishTap() runs.
+  if (pending > 1) {
+    print(
+      '⏭️ widget background: $pending taps pending, skipping widget refresh',
+    );
+    return;
+  }
+  await HomeWidgetService.refreshNote(uid, note);
+}
+
+/// NEW: tells the widget side that this tap is finished.
+Future<void> _finishTap() async {
+  final pending = await HomeWidget.getWidgetData<int>(_kPendingTaps) ?? 0;
+  await HomeWidget.saveWidgetData<int>(
+    _kPendingTaps,
+    pending > 0 ? pending - 1 : 0,
+  );
+}
+
+Future<void> _handleTap(Uri? uri) async {
   print('🔘 widget background action fired: $uri');
+
+  // Kept so that if anything goes wrong we can put the widget back to the
+  // real saved value (the Kotlin side already showed the tap optimistically).
+  String? revertUid;
+  Note? revertNote;
+
   try {
     if (uri == null) {
       print('⚠️ widget background: uri was null, aborting');
@@ -51,7 +100,7 @@ Future<void> runWidgetBackgroundAction(Uri? uri) async {
     await _ensureFirebase();
 
     final accounts = await LocalStorageService.loadAccounts();
-    // CHANGED (Fix 3c): a cold headless engine can be slow to rehydrate auth.
+    // A cold headless engine can be slow to rehydrate auth.
     await MultiAccountAuthService.instance.restoreSessions(
       accounts,
       authTimeout: const Duration(seconds: 8),
@@ -68,6 +117,8 @@ Future<void> runWidgetBackgroundAction(Uri? uri) async {
       return;
     }
     final note = notes[idx];
+    revertUid = uid;
+    revertNote = note;
 
     final session = MultiAccountAuthService.instance.sessionFor(uid);
 
@@ -75,6 +126,7 @@ Future<void> runWidgetBackgroundAction(Uri? uri) async {
       final index = int.tryParse(uri.queryParameters['index'] ?? '') ?? -1;
       if (index < 0 || index >= note.todoList.length) {
         print('⚠️ widget background: todo index $index out of range, aborting');
+        await _refreshWidgetIfIdle(uid, note); // undo the instant change
         return;
       }
 
@@ -82,6 +134,7 @@ Future<void> runWidgetBackgroundAction(Uri? uri) async {
         print(
           '⚠️ widget background: no live session for $uid, aborting todo toggle',
         );
+        await _refreshWidgetIfIdle(uid, note); // undo the instant change
         return;
       }
 
@@ -123,8 +176,8 @@ Future<void> runWidgetBackgroundAction(Uri? uri) async {
         );
       }
 
-      // NEW (Fix 6): mirror what TimedTaskScreen does when an item is
-      // ticked — freeze the remaining time; clear it when un-ticked.
+      // Mirror what TimedTaskScreen does when an item is ticked — freeze the
+      // remaining time; clear it when un-ticked.
       Duration? remaining;
       if (resultDone && old.dueDateTime != null) {
         final diff = old.dueDateTime!.difference(DateTime.now());
@@ -143,8 +196,24 @@ Future<void> runWidgetBackgroundAction(Uri? uri) async {
           ? NotePreview.timed(updatedTodoList)
           : NotePreview.todo(updatedTodoList);
 
-      // One multi-path update keeps the cloud copy in step with the in-app
-      // screens. A null value deletes the key (what we want when un-ticking).
+      final updatedNote = Note(
+        id: note.id,
+        title: note.title,
+        body: newBody,
+        isStarred: note.isStarred,
+        type: note.type,
+        todoList: updatedTodoList,
+        counterList: note.counterList,
+      );
+
+      notes[idx] = updatedNote;
+      await LocalStorageService.saveNotes(uid, notes);
+      // CHANGED: the widget is refreshed BEFORE the slower cloud "body" update.
+      await _refreshWidgetIfIdle(uid, updatedNote);
+      print('✅ widget background: toggled todo $index on note $noteId');
+
+      // Keeps the cloud copy's preview body and frozen countdown in step with
+      // the in-app screens. A null value deletes the key (un-ticking).
       try {
         await session.database
             .ref()
@@ -160,22 +229,6 @@ Future<void> runWidgetBackgroundAction(Uri? uri) async {
       } catch (e) {
         print('⚠️ widget background: body/remaining update failed: $e');
       }
-
-      final updatedNote = Note(
-        id: note.id,
-        title: note.title,
-        body: newBody,
-        isStarred: note.isStarred,
-        type: note.type,
-        todoList: updatedTodoList,
-        counterList: note.counterList,
-      );
-
-      notes[idx] = updatedNote;
-      await LocalStorageService.saveNotes(uid, notes);
-      // CHANGED (Fix 4d): refresh every widget showing this note.
-      await HomeWidgetService.refreshNote(uid, updatedNote);
-      print('✅ widget background: toggled todo $index on note $noteId');
     } else if (uri.host == 'adjustcounter') {
       final index = int.tryParse(uri.queryParameters['index'] ?? '') ?? -1;
       final delta = int.tryParse(uri.queryParameters['delta'] ?? '0') ?? 0;
@@ -183,6 +236,7 @@ Future<void> runWidgetBackgroundAction(Uri? uri) async {
         print(
           '⚠️ widget background: counter index $index out of range, aborting',
         );
+        await _refreshWidgetIfIdle(uid, note); // undo the instant change
         return;
       }
 
@@ -190,6 +244,7 @@ Future<void> runWidgetBackgroundAction(Uri? uri) async {
         print(
           '⚠️ widget background: no live session for $uid, aborting counter adjust',
         );
+        await _refreshWidgetIfIdle(uid, note); // undo the instant change
         return;
       }
 
@@ -206,7 +261,7 @@ Future<void> runWidgetBackgroundAction(Uri? uri) async {
           .child('count');
 
       final old = note.counterList[index];
-      // CHANGED (Fix 10): no clamp at 0, to match the in-app counter screen.
+      // No clamp at 0, to match the in-app counter screen.
       int resultCount = old.count + delta; // fallback
 
       try {
@@ -238,20 +293,7 @@ Future<void> runWidgetBackgroundAction(Uri? uri) async {
         count: resultCount,
       );
 
-      // NEW (Fix 6): keep the preview body in step, as the app screen does.
       final newBody = NotePreview.counter(updatedCounterList);
-      try {
-        await session.database
-            .ref()
-            .child('users')
-            .child(uid)
-            .child('notes')
-            .child(noteId)
-            .update({'body': newBody})
-            .timeout(const Duration(seconds: 15));
-      } catch (e) {
-        print('⚠️ widget background: body update failed: $e');
-      }
 
       final updatedNote = Note(
         id: note.id,
@@ -265,16 +307,37 @@ Future<void> runWidgetBackgroundAction(Uri? uri) async {
 
       notes[idx] = updatedNote;
       await LocalStorageService.saveNotes(uid, notes);
-      // CHANGED (Fix 4d): refresh every widget showing this note.
-      await HomeWidgetService.refreshNote(uid, updatedNote);
+      // CHANGED: the widget is refreshed BEFORE the slower cloud "body" update.
+      await _refreshWidgetIfIdle(uid, updatedNote);
       print(
         '✅ widget background: adjusted counter $index by $delta on note $noteId',
       );
+
+      try {
+        await session.database
+            .ref()
+            .child('users')
+            .child(uid)
+            .child('notes')
+            .child(noteId)
+            .update({'body': newBody})
+            .timeout(const Duration(seconds: 15));
+      } catch (e) {
+        print('⚠️ widget background: body update failed: $e');
+      }
     } else {
       print('⚠️ widget background: unrecognized action host "${uri.host}"');
     }
   } catch (e, st) {
     print('❌ widget background action FAILED: $e');
     print(st);
+    // Put the widget back to the last real saved value.
+    if (revertUid != null && revertNote != null) {
+      try {
+        await _refreshWidgetIfIdle(revertUid, revertNote);
+      } catch (_) {}
+    }
+  } finally {
+    await _finishTap();
   }
 }

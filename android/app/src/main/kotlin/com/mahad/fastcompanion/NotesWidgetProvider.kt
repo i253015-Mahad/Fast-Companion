@@ -4,6 +4,7 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -14,11 +15,24 @@ import es.antonborri.home_widget.HomeWidgetBackgroundIntent
 import es.antonborri.home_widget.HomeWidgetPlugin
 import org.json.JSONObject
 
+// How many widget taps have been handed to Dart but not finished yet.
+// Dart (widget_background_main.dart) reads and lowers this number, and uses it
+// to avoid redrawing the widget with a half-finished value in the middle of a
+// quick series of taps.
+private const val PENDING_TAPS_KEY = "pending_taps"
+private const val PENDING_TAPS_TIME_KEY = "pending_taps_ts"
+
+// If the last tap is older than this, assume the counter is stale and restart.
+private const val PENDING_TAPS_STALE_MS = 30_000L
+
 /**
  * Scrollable widget with live countdowns and a collapsible "checked items"
- * group. This class sets up the list and handles the title, placeholder
- * messages, text notes, the edit button, taps on list rows, and a one-shot
- * refresh for when a task's countdown reaches zero.
+ * group.
+ *
+ * Taps update the widget INSTANTLY (see applyOptimisticTap). That only
+ * refreshes the list. Every system update request (onUpdate) always answers
+ * with a full redraw, which is the safe thing to do: skipping it made the
+ * widget go blank.
  */
 class NotesWidgetProvider : AppWidgetProvider() {
 
@@ -43,6 +57,7 @@ class NotesWidgetProvider : AppWidgetProvider() {
         for (id in appWidgetIds) {
             editor.remove("payload_$id")
             editor.remove(checkedExpandedKey(id))
+            editor.remove("sig_$id") // left over from the earlier shortcut version
             cancelExpiryRefresh(context, id)
         }
         editor.apply()
@@ -50,7 +65,11 @@ class NotesWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == ACTION_ITEM_CLICK) {
-            handleItemClick(context, intent.data)
+            try {
+                handleItemClick(context, intent.data)
+            } catch (e: Exception) {
+                android.util.Log.e("NotesWidgetProvider", "Tap handling failed", e)
+            }
             return
         }
         super.onReceive(context, intent)
@@ -59,8 +78,8 @@ class NotesWidgetProvider : AppWidgetProvider() {
     /**
      * Taps on list rows arrive here.
      *  - the checked-items header is handled right here (instant, no Dart);
-     *  - everything else (tick a task, + / - on a counter) is passed on to
-     *    home_widget's background receiver exactly as before.
+     *  - ticking a task or pressing + / - first updates the widget on the spot,
+     *    then hands the real work (saving to Firebase) to Dart as before.
      */
     private fun handleItemClick(context: Context, uri: Uri?) {
         if (uri == null) return
@@ -71,11 +90,14 @@ class NotesWidgetProvider : AppWidgetProvider() {
             val key = checkedExpandedKey(widgetId)
             val isOpen = prefs.getBoolean(key, DEFAULT_CHECKED_EXPANDED)
             prefs.edit().putBoolean(key, !isOpen).apply()
-            // Only the list data changed, so refresh just the list. That keeps
-            // the scroll position better than a full redraw.
             AppWidgetManager.getInstance(context)
                 .notifyAppWidgetViewDataChanged(widgetId, R.id.widget_list)
         } else {
+            // 1) show the change immediately
+            applyOptimisticTap(context, uri)
+            // 2) remember that Dart still owes us a result
+            markTapPending(context)
+            // 3) do the real work (Firebase etc.) in the background
             try {
                 HomeWidgetBackgroundIntent.getBroadcast(context, uri).send()
             } catch (e: PendingIntent.CanceledException) {
@@ -84,6 +106,74 @@ class NotesWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    private fun markTapPending(context: Context) {
+        val prefs = HomeWidgetPlugin.getData(context)
+        val now = System.currentTimeMillis()
+        val last = (prefs.all[PENDING_TAPS_TIME_KEY] as? Number)?.toLong() ?: 0L
+        val current = if (now - last > PENDING_TAPS_STALE_MS) 0
+        else (prefs.all[PENDING_TAPS_KEY] as? Number)?.toInt() ?: 0
+        prefs.edit()
+            .putInt(PENDING_TAPS_KEY, current + 1)
+            .putLong(PENDING_TAPS_TIME_KEY, now)
+            .apply()
+    }
+
+    /**
+     * Applies the tap to the widget's stored copy of the note and refreshes
+     * just the list, so the number or tick changes the instant you tap. When
+     * Dart finishes saving, it writes the real value over this one.
+     */
+    private fun applyOptimisticTap(context: Context, uri: Uri) {
+        val uid = uri.getQueryParameter("uid") ?: return
+        val noteId = uri.getQueryParameter("noteId") ?: return
+        val index = uri.getQueryParameter("index")?.toIntOrNull() ?: return
+        val isToggle = uri.host.equals("toggleTodo", ignoreCase = true)
+        val isAdjust = uri.host.equals("adjustCounter", ignoreCase = true)
+        if (!isToggle && !isAdjust) return
+        val delta = uri.getQueryParameter("delta")?.toIntOrNull() ?: 0
+
+        val prefs = HomeWidgetPlugin.getData(context)
+        val manager = AppWidgetManager.getInstance(context)
+        val ids = manager.getAppWidgetIds(ComponentName(context, NotesWidgetProvider::class.java))
+
+        // Every widget showing this note changes, not just the one tapped.
+        for (id in ids) {
+            val key = "payload_$id"
+            val raw = prefs.getString(key, null)
+            if (raw.isNullOrEmpty()) continue
+            try {
+                val payload = JSONObject(raw)
+                if (payload.optString("uid") != uid || payload.optString("noteId") != noteId) continue
+
+                if (isToggle) {
+                    val array = payload.optJSONArray("todoList") ?: continue
+                    val item = array.optJSONObject(index) ?: continue
+                    val nowDone = !item.optBoolean("isDone", false)
+                    item.put("isDone", nowDone)
+                    // Same rule as the app: ticking freezes the remaining time,
+                    // unticking clears it.
+                    if (nowDone && !item.isNull("dueMs")) {
+                        val left = item.getLong("dueMs") - System.currentTimeMillis()
+                        item.put("remainingMs", if (left > 0) left else 0L)
+                    } else if (!nowDone) {
+                        item.put("remainingMs", JSONObject.NULL)
+                    }
+                } else {
+                    val array = payload.optJSONArray("counterList") ?: continue
+                    val item = array.optJSONObject(index) ?: continue
+                    item.put("count", item.optInt("count", 0) + delta)
+                }
+
+                prefs.edit().putString(key, payload.toString()).apply()
+                manager.notifyAppWidgetViewDataChanged(id, R.id.widget_list)
+            } catch (e: Exception) {
+                android.util.Log.e("NotesWidgetProvider", "Optimistic update failed", e)
+            }
+        }
+    }
+
+    // Always a FULL redraw. Android asks for this on every onUpdate, and
+    // answering with nothing is what made the widget go blank.
     private fun updateWidget(
         context: Context,
         appWidgetManager: AppWidgetManager,
@@ -189,9 +279,8 @@ class NotesWidgetProvider : AppWidgetProvider() {
         }
         views.setRemoteAdapter(R.id.widget_list, serviceIntent)
 
-        // CHANGED: row taps now go to THIS provider (handleItemClick above),
-        // which handles the checked-items header itself and forwards every
-        // other tap to home_widget. Must be MUTABLE so each row can add its URI.
+        // Row taps go to THIS provider (handleItemClick above). Must be MUTABLE
+        // so each row can add its own URI.
         val template = Intent(context, NotesWidgetProvider::class.java).apply {
             action = ACTION_ITEM_CLICK
         }

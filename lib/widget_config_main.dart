@@ -85,11 +85,14 @@ class _WidgetConfigureFlowState extends State<_WidgetConfigureFlow> {
         return;
       }
 
+      // Always keep the list: the note screen's back button needs to know
+      // whether going back means "show accounts" or "cancel setup".
+      _accounts = accounts;
+
       if (accounts.length == 1) {
         await _selectAccount(accounts.first['uid']!);
       } else {
         setState(() {
-          _accounts = accounts;
           _step = _Step.pickAccount;
         });
       }
@@ -113,6 +116,27 @@ class _WidgetConfigureFlowState extends State<_WidgetConfigureFlow> {
     });
   }
 
+  // Back navigation on the "Choose a note" screen.
+  //
+  // Multiple accounts -> return to the account list.
+  // Single account    -> there's nowhere to go back to, so end the whole
+  // setup instead (native side discards the widget placement).
+  Future<void> _handleNoteBack() async {
+    if (_accounts.length > 1) {
+      _goBackToAccounts();
+    } else {
+      await _configChannel.invokeMethod('configCancel');
+    }
+  }
+
+  void _goBackToAccounts() {
+    setState(() {
+      _step = _Step.pickAccount;
+      _selectedUid = null;
+      _notes = [];
+    });
+  }
+
   // CHANGED (Fix 4c): pin to THIS widget's id instead of one global slot.
   Future<void> _selectNote(Note note) async {
     final widgetId = await _configChannel.invokeMethod<int>('getWidgetId');
@@ -133,9 +157,46 @@ class _WidgetConfigureFlowState extends State<_WidgetConfigureFlow> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(child: _buildBody()),
+    // Intercept system back ONLY on the note screen: elsewhere the default
+    // behavior (finish with RESULT_CANCELED, widget not placed) is wanted.
+    final interceptBack = _step == _Step.pickNote;
+    return PopScope(
+      canPop: !interceptBack,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _handleNoteBack();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: SafeArea(child: _buildBody()),
+      ),
+    );
+  }
+
+  /// "Choose a note" header with a back button at the top left.
+  ///
+  /// Back returns to the account list, or cancels the widget setup when
+  /// only one account is signed in (see [_handleNoteBack]).
+  Widget _buildNoteHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 12, 20, 4),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: _handleNoteBack,
+          ),
+          const SizedBox(width: 4),
+          const Text(
+            "Choose a note",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -177,7 +238,7 @@ class _WidgetConfigureFlowState extends State<_WidgetConfigureFlow> {
               child: ListView.separated(
                 padding: const EdgeInsets.all(16),
                 itemCount: _accounts.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
                 itemBuilder: (context, index) {
                   final acc = _accounts[index];
                   final photoUrl = acc['photoUrl'] ?? '';
@@ -224,32 +285,30 @@ class _WidgetConfigureFlowState extends State<_WidgetConfigureFlow> {
 
       case _Step.pickNote:
         if (_notes.isEmpty) {
-          return const Center(
-            child: Text(
-              "No notes in this account yet.",
-              style: TextStyle(color: Colors.white30),
-            ),
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildNoteHeader(),
+              const Expanded(
+                child: Center(
+                  child: Text(
+                    "No notes in this account yet.",
+                    style: TextStyle(color: Colors.white30),
+                  ),
+                ),
+              ),
+            ],
           );
         }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
-              child: Text(
-                "Choose a note",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+            _buildNoteHeader(),
             Expanded(
               child: ListView.separated(
                 padding: const EdgeInsets.all(16),
                 itemCount: _notes.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
                 itemBuilder: (context, index) {
                   final note = _notes[index];
                   return Material(
