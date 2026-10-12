@@ -3,6 +3,11 @@
          POST_NOTIFICATIONS is also declared by the plugin itself; listed
          here so the permission set is visible at a glance. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Fetching the university timetable sheets (http) and syncing notes.
+         The debug/profile manifests declare this too, but release builds
+         only merge the main manifest — without it nothing can reach the
+         network in a release APK. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Exact alarms so reminders fire at the exact minute (falls back to
          inexact alarms if the user revokes this on Android 14+). -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>

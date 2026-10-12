@@ -350,6 +350,8 @@ class _TodoRowItemState extends State<TodoRowItem> {
             decoration: widget.item.isDone ? TextDecoration.lineThrough : null,
           ),
           textInputAction: TextInputAction.next,
+          maxLines: null,
+          keyboardType: TextInputType.multiline,
           decoration: const InputDecoration(
             hintText: "List item",
             hintStyle: TextStyle(color: Colors.white24),

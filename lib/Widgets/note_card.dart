@@ -122,8 +122,7 @@ class NoteCard extends StatelessWidget {
                       : AppTextStyles.cardBody.color,
                   decoration: item.isDone ? TextDecoration.lineThrough : null,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                softWrap: true,
               ),
             ),
           ],
@@ -153,8 +152,7 @@ class NoteCard extends StatelessWidget {
                 child: Text(
                   item.label,
                   style: AppTextStyles.cardBody,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  softWrap: true,
                 ),
               ),
               Text(

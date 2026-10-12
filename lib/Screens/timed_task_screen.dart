@@ -263,6 +263,8 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
           decoration: item.isDone ? TextDecoration.lineThrough : null,
         ),
         textInputAction: TextInputAction.next,
+        maxLines: null,
+        keyboardType: TextInputType.multiline,
         decoration: const InputDecoration(
           hintText: "Add timed task...",
           hintStyle: TextStyle(color: Colors.white24),

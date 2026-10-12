@@ -11,6 +11,7 @@ import 'edit_note_screen.dart';
 import 'todo_screen.dart';
 import 'counter_screen.dart';
 import 'timed_task_screen.dart';
+import 'timetable_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:fast_companion/services/database_service.dart';
@@ -38,6 +39,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isMenuOpen = false;
   final TextEditingController searchController = TextEditingController();
   String searchQuery = "";
+
+  // Bottom nav: 0 = Notes, 1 = Timetable, 2 = Flex (placeholder).
+  // Held in an IndexedStack so the Notes state (search text, scroll,
+  // loaded notes) survives a round trip to another tab.
+  int _navIndex = 0;
 
   // Live vertical drag distance (px) on the account avatar, for the
   // swipe-up/down-to-switch-account gesture. Negative = swiping up.
@@ -1106,300 +1112,327 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: IndexedStack(
+          index: _navIndex,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("Notes", style: AppTextStyles.title),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      if (_isUserLoggedIn) {
-                        _showAccountSwitcherSheet(context);
-                      }
-                    },
-                    // Swipe up = next account, down = previous one (wraps
-                    // around). Only meaningful with 2+ signed-in accounts.
-                    onVerticalDragStart: _onAvatarDragStart,
-                    onVerticalDragUpdate: _onAvatarDragUpdate,
-                    onVerticalDragEnd: _onAvatarDragEnd,
-                    onVerticalDragCancel: () {
-                      if (_isSwitchingAccount || !_isAvatarDragging) return;
-                      _isAvatarDragging = false;
-                      setState(() {
-                        _avatarDragOffset = 0;
-                        _previewOpacity = 0;
-                      });
-                    },
-                    // Padding enlarges the touch target beyond the 36px
-                    // circle so the swipe is easy to perform.
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 8,
-                        horizontal: 6,
-                      ),
-                      child: AnimatedSlide(
-                        offset: Offset(0, _avatarDragOffset / 36),
-                        duration: _isAvatarDragging
-                            ? Duration.zero
-                            : _avatarSnapDuration,
-                        curve: Curves.easeOutBack,
-                        child: AnimatedScale(
-                          scale:
-                              1.0 -
-                              ((_avatarDragOffset.abs() / _avatarDragClamp)
-                                      .clamp(0.0, 1.0) *
-                                  0.15),
-                          duration: _isAvatarDragging
-                              ? Duration.zero
-                              : _avatarSnapDuration,
-                          curve: Curves.easeOut,
-                          child: SizedBox(
-                            width: 36,
-                            height: 36,
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                _buildAccountCircle(
-                                  _isUserLoggedIn ? _userProfileUrl : null,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Notes", style: AppTextStyles.title),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          if (_isUserLoggedIn) {
+                            _showAccountSwitcherSheet(context);
+                          }
+                        },
+                        // Swipe up = next account, down = previous one (wraps
+                        // around). Only meaningful with 2+ signed-in accounts.
+                        onVerticalDragStart: _onAvatarDragStart,
+                        onVerticalDragUpdate: _onAvatarDragUpdate,
+                        onVerticalDragEnd: _onAvatarDragEnd,
+                        onVerticalDragCancel: () {
+                          if (_isSwitchingAccount || !_isAvatarDragging) return;
+                          _isAvatarDragging = false;
+                          setState(() {
+                            _avatarDragOffset = 0;
+                            _previewOpacity = 0;
+                          });
+                        },
+                        // Padding enlarges the touch target beyond the 36px
+                        // circle so the swipe is easy to perform.
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 8,
+                            horizontal: 6,
+                          ),
+                          child: AnimatedSlide(
+                            offset: Offset(0, _avatarDragOffset / 36),
+                            duration: _isAvatarDragging
+                                ? Duration.zero
+                                : _avatarSnapDuration,
+                            curve: Curves.easeOutBack,
+                            child: AnimatedScale(
+                              scale:
+                                  1.0 -
+                                  ((_avatarDragOffset.abs() / _avatarDragClamp)
+                                          .clamp(0.0, 1.0) *
+                                      0.15),
+                              duration: _isAvatarDragging
+                                  ? Duration.zero
+                                  : _avatarSnapDuration,
+                              curve: Curves.easeOut,
+                              child: SizedBox(
+                                width: 36,
+                                height: 36,
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    _buildAccountCircle(
+                                      _isUserLoggedIn ? _userProfileUrl : null,
+                                    ),
+                                    // The account a swipe would land on, fading
+                                    // in as you drag (held at full opacity for
+                                    // the duration of an actual switch).
+                                    if (_previewPhoto != null)
+                                      AnimatedOpacity(
+                                        opacity: _previewOpacity,
+                                        duration: _isAvatarDragging
+                                            ? Duration.zero
+                                            : _avatarSnapDuration,
+                                        curve: Curves.easeOut,
+                                        onEnd: _onPreviewFadeComplete,
+                                        child: _buildAccountCircle(
+                                          _previewPhoto,
+                                        ),
+                                      ),
+                                  ],
                                 ),
-                                // The account a swipe would land on, fading
-                                // in as you drag (held at full opacity for
-                                // the duration of an actual switch).
-                                if (_previewPhoto != null)
-                                  AnimatedOpacity(
-                                    opacity: _previewOpacity,
-                                    duration: _isAvatarDragging
-                                        ? Duration.zero
-                                        : _avatarSnapDuration,
-                                    curve: Curves.easeOut,
-                                    onEnd: _onPreviewFadeComplete,
-                                    child: _buildAccountCircle(_previewPhoto),
-                                  ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  TextField(
+                    style: const TextStyle(color: Colors.white, fontSize: 18),
+                    controller: searchController,
+                    onChanged: (value) {
+                      setState(() {
+                        searchQuery = value.toLowerCase();
+                      });
+                    },
+                    decoration: InputDecoration(
+                      hintText: "Find your thoughts...",
+                      hintStyle: const TextStyle(color: Colors.white70),
+                      filled: true,
+                      fillColor: Colors.black12,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                style: const TextStyle(color: Colors.white, fontSize: 18),
-                controller: searchController,
-                onChanged: (value) {
-                  setState(() {
-                    searchQuery = value.toLowerCase();
-                  });
-                },
-                decoration: InputDecoration(
-                  hintText: "Find your thoughts...",
-                  hintStyle: const TextStyle(color: Colors.white70),
-                  filled: true,
-                  fillColor: Colors.black12,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: !_isUserLoggedIn
-                    ? Center(
-                        child: Container(
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: AppColors.navBar,
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.cloud_queue_rounded,
-                                size: 56,
-                                color: AppColors.cardOrange,
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: !_isUserLoggedIn
+                        ? Center(
+                            child: Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                color: AppColors.navBar,
+                                borderRadius: BorderRadius.circular(24),
                               ),
-                              const SizedBox(height: 16),
-                              const Text(
-                                "Sync Notes Across Devices",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 24),
-                              ElevatedButton.icon(
-                                icon: const Icon(
-                                  Icons.login_rounded,
-                                  color: Colors.blueAccent,
-                                ),
-                                label: const Text("Sign in with Google"),
-                                onPressed: () async {
-                                  try {
-                                    final session = await _authService
-                                        .addAccount();
-                                    if (session == null || !mounted) return;
-                                    await _activateSession(session);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          "Welcome: ${session.email}",
-                                        ),
-                                      ),
-                                    );
-                                  } catch (e) {
-                                    if (!mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          "Google Connection Failed: $e",
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    : Builder(
-                        builder: (context) {
-                          List<Note> displayNotes = _localNotes;
-                          if (searchQuery.isNotEmpty) {
-                            displayNotes = displayNotes.where((note) {
-                              return note.title.toLowerCase().contains(
-                                    searchQuery,
-                                  ) ||
-                                  note.body.toLowerCase().contains(searchQuery);
-                            }).toList();
-                          }
-
-                          if (displayNotes.isEmpty) {
-                            // A search that matched nothing isn't the same
-                            // as an account with no notes — say so.
-                            if (searchQuery.isNotEmpty) {
-                              return Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.search_off_rounded,
-                                      size: 56,
-                                      color: Colors.white38,
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      'No notes match "$searchQuery"',
-                                      style: const TextStyle(
-                                        color: Colors.white60,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    const Text(
-                                      "Try a different search term.",
-                                      style: TextStyle(
-                                        color: Colors.white38,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }
-
-                            // Sits a little above center so it doesn't feel
-                            // like it's sinking to the bottom of the screen.
-                            return Align(
-                              alignment: const Alignment(0, -0.25),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  _buildLitBulb(),
-                                  const SizedBox(height: 4),
+                                  const Icon(
+                                    Icons.cloud_queue_rounded,
+                                    size: 56,
+                                    color: AppColors.cardOrange,
+                                  ),
+                                  const SizedBox(height: 16),
                                   const Text(
-                                    "Add a note and get Creative!",
+                                    "Sync Notes Across Devices",
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
+                                  const SizedBox(height: 24),
+                                  ElevatedButton.icon(
+                                    icon: const Icon(
+                                      Icons.login_rounded,
+                                      color: Colors.blueAccent,
+                                    ),
+                                    label: const Text("Sign in with Google"),
+                                    onPressed: () async {
+                                      try {
+                                        final session = await _authService
+                                            .addAccount();
+                                        if (session == null || !mounted) return;
+                                        await _activateSession(session);
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              "Welcome: ${session.email}",
+                                            ),
+                                          ),
+                                        );
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              "Google Connection Failed: $e",
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  ),
                                 ],
                               ),
-                            );
-                          }
+                            ),
+                          )
+                        : Builder(
+                            builder: (context) {
+                              List<Note> displayNotes = _localNotes;
+                              if (searchQuery.isNotEmpty) {
+                                displayNotes = displayNotes.where((note) {
+                                  return note.title.toLowerCase().contains(
+                                        searchQuery,
+                                      ) ||
+                                      note.body.toLowerCase().contains(
+                                        searchQuery,
+                                      );
+                                }).toList();
+                              }
 
-                          final reversedNotes = displayNotes.reversed.toList();
-                          final starredNotes = reversedNotes
-                              .where((n) => n.isStarred)
-                              .toList();
-                          final otherNotes = reversedNotes
-                              .where((n) => !n.isStarred)
-                              .toList();
+                              if (displayNotes.isEmpty) {
+                                // A search that matched nothing isn't the same
+                                // as an account with no notes — say so.
+                                if (searchQuery.isNotEmpty) {
+                                  return Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.search_off_rounded,
+                                          size: 56,
+                                          color: Colors.white38,
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          'No notes match "$searchQuery"',
+                                          style: const TextStyle(
+                                            color: Colors.white60,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        const Text(
+                                          "Try a different search term.",
+                                          style: TextStyle(
+                                            color: Colors.white38,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }
 
-                          if (starredNotes.isEmpty) {
-                            return ListView(
-                              padding: EdgeInsets.zero,
-                              children: [
-                                _buildNotesGrid(reversedNotes, 0),
-                                const SizedBox(height: 20),
-                              ],
-                            );
-                          }
-
-                          return ListView(
-                            padding: EdgeInsets.zero,
-                            children: [
-                              const Padding(
-                                padding: EdgeInsets.only(bottom: 10, left: 4),
-                                child: Text(
-                                  "STARRED",
-                                  style: TextStyle(
-                                    color: Colors.white60,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1.5,
+                                // Sits a little above center so it doesn't feel
+                                // like it's sinking to the bottom of the screen.
+                                return Align(
+                                  alignment: const Alignment(0, -0.25),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _buildLitBulb(),
+                                      const SizedBox(height: 4),
+                                      const Text(
+                                        "Add a note and get Creative!",
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ),
-                              _buildNotesGrid(starredNotes, 0),
-                              const SizedBox(height: 25),
-                              const Padding(
-                                padding: EdgeInsets.only(bottom: 10, left: 4),
-                                child: Text(
-                                  "OTHER",
-                                  style: TextStyle(
-                                    color: Colors.white60,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1.5,
+                                );
+                              }
+
+                              final reversedNotes = displayNotes.reversed
+                                  .toList();
+                              final starredNotes = reversedNotes
+                                  .where((n) => n.isStarred)
+                                  .toList();
+                              final otherNotes = reversedNotes
+                                  .where((n) => !n.isStarred)
+                                  .toList();
+
+                              if (starredNotes.isEmpty) {
+                                return ListView(
+                                  padding: EdgeInsets.zero,
+                                  children: [
+                                    _buildNotesGrid(reversedNotes, 0),
+                                    const SizedBox(height: 20),
+                                  ],
+                                );
+                              }
+
+                              return ListView(
+                                padding: EdgeInsets.zero,
+                                children: [
+                                  const Padding(
+                                    padding: EdgeInsets.only(
+                                      bottom: 10,
+                                      left: 4,
+                                    ),
+                                    child: Text(
+                                      "STARRED",
+                                      style: TextStyle(
+                                        color: Colors.white60,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1.5,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                              _buildNotesGrid(otherNotes, starredNotes.length),
-                              const SizedBox(height: 20),
-                            ],
-                          );
-                        },
-                      ),
+                                  _buildNotesGrid(starredNotes, 0),
+                                  const SizedBox(height: 25),
+                                  const Padding(
+                                    padding: EdgeInsets.only(
+                                      bottom: 10,
+                                      left: 4,
+                                    ),
+                                    child: Text(
+                                      "OTHER",
+                                      style: TextStyle(
+                                        color: Colors.white60,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1.5,
+                                      ),
+                                    ),
+                                  ),
+                                  _buildNotesGrid(
+                                    otherNotes,
+                                    starredNotes.length,
+                                  ),
+                                  const SizedBox(height: 20),
+                                ],
+                              );
+                            },
+                          ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            const TimetableScreen(),
+            _buildFlexPlaceholder(),
+          ],
         ),
       ),
 
-      floatingActionButton: !_isUserLoggedIn
+      // The note-creation speed dial only makes sense on the Notes tab
+      // (and only when signed in).
+      floatingActionButton: (!_isUserLoggedIn || _navIndex != 0)
           ? null
           : Stack(
               alignment: Alignment.bottomRight,
@@ -1504,72 +1537,88 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: Row(
             children: [
               Expanded(
-                child: InkWell(
-                  onTap: () {},
-                  child: const Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.notes_rounded, color: Colors.white),
-                      SizedBox(height: 2),
-                      Text(
-                        "Notes",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+                child: _buildNavTab(
+                  index: 0,
+                  icon: Icons.notes_rounded,
+                  label: "Notes",
                 ),
               ),
               Expanded(
-                child: InkWell(
-                  onTap: () {},
-                  child: const Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.edit_calendar_rounded,
-                        color: AppColors.cardOrange,
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        "Timetable",
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+                child: _buildNavTab(
+                  index: 1,
+                  icon: Icons.edit_calendar_rounded,
+                  label: "Timetable",
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: InkWell(
-                  onTap: () {},
-                  child: const Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.school_rounded, color: Colors.lightBlueAccent),
-                      SizedBox(height: 2),
-                      Text(
-                        "Flex",
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+                child: _buildNavTab(
+                  index: 2,
+                  icon: Icons.school_rounded,
+                  label: "Flex",
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// One bottom-nav tab. The active tab gets the orange accent; inactive
+  /// tabs are dimmed. Switching away from Notes closes the speed dial so
+  /// it isn't left open behind the next tab.
+  Widget _buildNavTab({
+    required int index,
+    required IconData icon,
+    required String label,
+  }) {
+    final active = _navIndex == index;
+    final color = active ? AppColors.cardOrange : Colors.white38;
+
+    return InkWell(
+      onTap: () {
+        if (_navIndex == index) return;
+        setState(() {
+          _navIndex = index;
+          _isMenuOpen = false;
+        });
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              color: active ? Colors.white : Colors.white54,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Placeholder for the not-yet-built Flex tab.
+  Widget _buildFlexPlaceholder() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Icon(Icons.school_rounded, size: 56, color: Colors.lightBlueAccent),
+          SizedBox(height: 16),
+          Text(
+            "Flex is coming soon!",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }

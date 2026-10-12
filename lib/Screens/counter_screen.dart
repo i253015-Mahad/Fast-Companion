@@ -1,5 +1,6 @@
 // lib/screens/counter_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/note.dart';
 import '../theme/app_colors.dart';
 import '../services/database_service.dart';
@@ -81,11 +82,16 @@ class _CounterScreenState extends State<CounterScreen> {
     final firebaseCounterList = savedList
         .map((i) => {'label': i.label, 'count': i.count})
         .toList();
-    await _db.updateNote(widget.note.id, {
-      'title': _titleController.text.trim(),
-      'body': previewBody,
-      'counterList': firebaseCounterList,
-    }, customUid: widget.uid, awaitRemote: true);
+    await _db.updateNote(
+      widget.note.id,
+      {
+        'title': _titleController.text.trim(),
+        'body': previewBody,
+        'counterList': firebaseCounterList,
+      },
+      customUid: widget.uid,
+      awaitRemote: true,
+    );
   }
 
   void _createNewCounterRow(int currentIndex) {
@@ -210,18 +216,30 @@ class CounterRowItem extends StatefulWidget {
 
 class _CounterRowItemState extends State<CounterRowItem> {
   late AppColors colors;
-  late TextEditingController _controller;
+  late TextEditingController _labelController;
+  late TextEditingController _countController;
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.item.label);
+    _labelController = TextEditingController(text: widget.item.label);
+    _countController = TextEditingController(
+      text: widget.item.count.toString(),
+    );
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _labelController.dispose();
+    _countController.dispose();
     super.dispose();
+  }
+
+  void _updateCount(String value) {
+    final parsed = int.tryParse(value);
+    if (parsed != null) {
+      setState(() => widget.item.count = parsed);
+    }
   }
 
   @override
@@ -229,6 +247,7 @@ class _CounterRowItemState extends State<CounterRowItem> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             "${widget.rowNumber}. ",
@@ -240,14 +259,20 @@ class _CounterRowItemState extends State<CounterRowItem> {
           ),
           Expanded(
             child: TextField(
-              controller: _controller,
+              controller: _labelController,
               focusNode: widget.focusNode,
               style: const TextStyle(color: Colors.white, fontSize: 18),
+
               textInputAction: TextInputAction.next,
+              maxLines: null,
+              minLines: 1,
+              keyboardType: TextInputType.multiline,
               decoration: const InputDecoration(
                 hintText: "Add counter feature...",
                 hintStyle: TextStyle(color: Colors.white24),
                 border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.only(top: 25),
               ),
               onChanged: (text) => widget.item.label = text,
               onSubmitted: (_) => widget.onNextRowRequested(),
@@ -255,33 +280,61 @@ class _CounterRowItemState extends State<CounterRowItem> {
           ),
           Row(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              IconButton(
-                icon: const Icon(
-                  Icons.remove_circle_outline,
-                  color: Colors.white60,
-                ),
-                onPressed: () => setState(() => widget.item.count--),
-              ),
-              SizedBox(
-                width: 40,
-                child: Center(
-                  child: Text(
-                    '${widget.item.count}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    widget.item.count--;
+                    _countController.text = widget.item.count.toString();
+                  });
+                },
+                child: const Padding(
+                  padding: EdgeInsets.all(4.0),
+                  child: Icon(
+                    Icons.remove_circle_outline,
+                    color: Colors.white60,
+                    size: 20,
                   ),
                 ),
               ),
-              IconButton(
-                icon: const Icon(
-                  Icons.add_circle_outline,
-                  color: AppColors.cardGreen,
+              SizedBox(
+                width: 50,
+                height: 28,
+                child: TextField(
+                  controller: _countController,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 0),
+                    border: InputBorder.none,
+                  ),
+                  onChanged: _updateCount,
+                  onSubmitted: (_) => widget.focusNode.requestFocus(),
                 ),
-                onPressed: () => setState(() => widget.item.count++),
+              ),
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    widget.item.count++;
+                    _countController.text = widget.item.count.toString();
+                  });
+                },
+                child: const Padding(
+                  padding: EdgeInsets.all(4.0),
+                  child: Icon(
+                    Icons.add_circle_outline,
+                    color: AppColors.cardGreen,
+                    size: 20,
+                  ),
+                ),
               ),
             ],
           ),
