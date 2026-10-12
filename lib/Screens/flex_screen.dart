@@ -27,38 +27,193 @@ class FlexScreen extends StatefulWidget {
 }
 
 class _FlexScreenState extends State<FlexScreen> {
-  /// Styles injected before the portal paints, so it comes up dark and
-  /// sits inside the app's palette rather than glaring white.
+  /// Darkens the portal by inverting the content half of it and
+  /// recolouring the chrome half.
   ///
-  /// The site's own colours are unknown and will change over time, so
-  /// instead of guessing at its CSS we darken the finished render — the
-  /// standard trick for an arbitrary page. `invert` flips every colour;
-  /// the `hue-rotate` afterwards undoes the hue shift that flip causes,
-  /// so accents stay recognisable (a blue link stays blue rather than
-  /// turning orange) and the white page background lands on a soft
-  /// near-black instead of pure #000.
+  /// Flex is a hybrid theme, which is what made this awkward. Read from
+  /// the portal's own stylesheets rather than guessed at:
   ///
-  /// Images are inverted a second time to cancel the first, leaving
-  /// photos and the university logo their real colours against the dark
-  /// chrome. Iframes are deliberately left alone — their contents are
-  /// already inverted once by the parent, which is what we want.
+  ///   * `.m-body`       `#f2f3f8`   the light lavender page background
+  ///   * `.m-header`     `#fff`      (via `.m-page--fluid`)
+  ///   * `.m-topbar`     `#fff`      the row holding the profile photo
+  ///   * `.m-header-head`, `.m-brand` `#355C7D`  the real header slate
+  ///   * `.m-footer`     `#F0F0F0`
   ///
-  /// Known trade-off: a CSS filter makes its element the containing
-  /// block for `position: fixed` descendants, so a portal sidebar that
-  /// was meant to stay pinned may scroll with the page. Content stays
-  /// fully usable; it is a cosmetic quirk of darkening a site we don't
-  /// control.
+  /// So the header is *meant* to be dark and only half of it is, while
+  /// the content is entirely light. Inverting `<html>` — the obvious
+  /// move — flips both halves at once: the cards go black, which is the
+  /// point, but the header comes out light periwinkle. Inverting a
+  /// hybrid theme does not darken it, it swaps which half is bright.
+  ///
+  /// The inversion is therefore scoped to `.m-wrapper`, which is an
+  /// ancestor of the content and a *sibling* of the offcanvas drawer.
+  /// An earlier build filtered `.m-body` instead, which caught the page
+  /// background as well and so needed no recolouring — but a filter
+  /// creates a stacking context, and `.m-body` wraps both the drawer and
+  /// the content. The drawer's `z-index: 1001` was trapped inside
+  /// `.m-body`'s `z-index: auto`, so it lost to the fixed header's
+  /// `z-index: 101` and the topbar painted over the menu. Scoping to
+  /// `.m-wrapper` leaves the drawer competing in the root context, which
+  /// is what the portal itself relies on.
+  ///
+  /// `.m-wrapper` has no background of its own — the only rule for it in
+  /// `CustomCss.css` is `.m-grid__item m-grid__item--fluid m-wrapper`,
+  /// missing its dots, so it never matches — so the lavender comes from
+  /// `.m-body` above it, and is now recoloured directly. That needs no
+  /// filter and so creates no stacking context. Media inside the
+  /// filtered subtree still needs cancelling, or photos render as
+  /// negatives.
+  ///
+  /// The header and footer sit outside it and are handled directly:
+  /// the footer keeps its own filter, and the two white header surfaces
+  /// are recoloured to `#355C7D` — the portal's own header slate, not a
+  /// colour invented here — so the whole header reads as one dark bar.
+  /// `.m-topbar` is left transparent rather than recoloured, because the
+  /// portal pulls it up over the page-title row with `margin-top: -50px`:
+  /// an opaque topbar is exactly what was hiding "Home". Transparent
+  /// shows the slate behind it, which is the same colour it was being
+  /// given anyway.
+  ///
+  /// The header box is `height: 60px !important`, but its rows stack to
+  /// 110px and overflow it while the content is offset by only 60px — so
+  /// the header also sat over the first 50px of the page.
+  /// `syncHeaderOffset` measures those rows and moves the content down
+  /// to where the header really ends.
+  ///
+  /// Anything attached to `<body>` outside `.m-page` escapes the filter
+  /// the same way, so the navigation mask and the scroll-to-top pill are
+  /// both recoloured directly rather than left glaring white.
+  ///
+  /// Scoping also fixes a problem the whole-page version had: because a
+  /// filter makes *its own* element the containing block, filtering
+  /// `<html>` unpinned the header, which is `position: fixed`. Leaving
+  /// the root unfiltered means it pins normally.
+  ///
+  /// Injected at document start, which can fire before the root element
+  /// exists. Appending a `<style>` to a null root throws and would kill
+  /// the script silently, so boot waits for the root.
   static const String _darkModeScript = '''
 (function () {
-  var root = document.head || document.documentElement;
-  if (!root) return;
-  var style = document.createElement('style');
-  style.textContent =
-    'html { background-color: #f4f4f4 !important;' +
-    '       filter: invert(1) hue-rotate(180deg) !important; }' +
-    'img, picture, video, canvas, svg {' +
-    '  filter: invert(1) hue-rotate(180deg) !important; }';
-  root.appendChild(style);
+  if (window.__fcDarkApplied) return;
+  window.__fcDarkApplied = true;
+
+  function boot() {
+    var root = document.head || document.documentElement;
+    if (!root) { setTimeout(boot, 10); return; }
+
+    var css = [
+      // Dark base behind everything, so nothing flashes white while the
+      // document is still parsing and nothing shows through on
+      // overscroll.
+      'html, body { background-color: #111111 !important; }',
+
+      // The lavender page background. Recoloured directly rather than
+      // filtered: a filter here would create a stacking context, and
+      // .m-body wraps both the drawer and the content, which is what
+      // trapped the drawer's z-index:1001 below the fixed header's 101.
+      '.m-body { background-color: #111111 !important; }',
+
+      // The light half of the theme — an ancestor of the content and a
+      // sibling of the drawer, so everything the portal paints here
+      // gets inverted once while the drawer stays outside it.
+      '.m-wrapper { filter: invert(1) hue-rotate(180deg) !important; }',
+
+      // Media inside the filtered subtree would render as a negative;
+      // this cancels the parent's filter for photos and charts.
+      '.m-wrapper img, .m-wrapper picture, .m-wrapper video,',
+      '.m-wrapper canvas,',
+      '.m-wrapper svg { filter: invert(1) hue-rotate(180deg) !important; }',
+
+      // The footer is a sibling of .m-body, so it needs its own
+      // filter rather than inheriting this one.
+      '.m-footer { filter: invert(1) hue-rotate(180deg) !important; }',
+      '.m-footer img, .m-footer picture, .m-footer video,',
+      '.m-footer canvas, .m-footer svg {',
+      '  filter: invert(1) hue-rotate(180deg) !important; }',
+
+      // The header sits outside every filter above but is painted
+      // white by .m-page--fluid .m-header and by .m-topbar, which is
+      // why a white band sat under the title bar. Both are recoloured
+      // to the portal's own #355C7D — the value CustomCss.css already
+      // gives .m-header-head and .m-brand — so the header reads as one
+      // dark bar instead of slate over white.
+      '.m-page--fluid .m-header, .m-page--wide .m-header {',
+      '  background-color: #355C7D !important; }',
+      // The title row, which now has to be opaque: it covers the
+      // content's first 50px and backs the transparent topbar below.
+      '.m-header-head { background-color: #355C7D !important; }',
+
+      // The portal pulls the topbar up over the page-title row with
+      // margin-top:-50px, so an opaque background here is what was
+      // hiding "Home". Transparent lets the slate of .m-header-head
+      // show through unchanged — the same colour it was being given.
+      '.m-topbar { background-color: transparent !important;',
+      '  box-shadow: none !important; }',
+
+      // The portal's navigation mask: rgba(255,255,255,0.6) holding a
+      // white .loader-box, outside .m_body — without this every page
+      // change would flash white.
+      '[id^="overlay"] { background-color: rgba(8, 17, 23, 0.82) !important; }',
+      '.loader-box {',
+      '  background: #16232b !important;',
+      '  box-shadow: 0 0 10px rgba(0, 0, 0, 0.6) !important; }',
+
+      // The scroll-to-top pill is appended straight to <body> after
+      // .m-page closes, so it sits outside every filter and was the
+      // last white thing left on screen. Recoloured to the header's
+      // slate; the portal ships a --skin-dark variant of its own,
+      // which is confirmation that this button is meant to adapt.
+      '.m-scroll-top { background: #355C7D !important;',
+      '  box-shadow: 0 0 15px 1px rgba(0, 0, 0, 0.5) !important; }',
+      '.m-scroll-top > i { color: #ffffff !important; }'
+    ].join('\\n');
+
+    var style = document.createElement('style');
+    style.textContent = css;
+    root.appendChild(style);
+  }
+
+  // The header box is `height: 60px !important`, but its three rows
+  // stack to ~110px and overflow it, while .m-body offsets the content
+  // by only 60px. Measured on device: header 0->60, title row 60->110,
+  // topbar 39->97, content from 60. The header was therefore sitting
+  // over the page title *and* over the first 50px of the page. This
+  // moves the content down to where the header really ends.
+  //
+  // Only the structural rows are measured, never every descendant: the
+  // topbar's dropdown menu is a descendant and would report a much
+  // larger bottom while open, but a row's own border box never includes
+  // what overflows it. The value is absolute rather than incremental,
+  // so re-running on load or resize is safe.
+  function syncHeaderOffset(tries) {
+    try {
+      var header = document.querySelector('header.m-header');
+      var body = document.querySelector('.m-body');
+      if (!header || !body) {
+        // Injected at document start, often before the header exists.
+        if ((tries || 0) < 300) {
+          setTimeout(function () { syncHeaderOffset((tries || 0) + 1); }, 50);
+        }
+        return;
+      }
+      var rows = header.querySelectorAll(
+        '.m-brand, .m-header-head, .m-topbar');
+      var bottom = 0;
+      for (var i = 0; i < rows.length; i++) {
+        var edge = rows[i].getBoundingClientRect().bottom;
+        if (edge > bottom) bottom = edge;
+      }
+      if (bottom > 0) body.style.paddingTop = Math.ceil(bottom) + 'px';
+    } catch (e) {
+      // A portal change must never take the page down over this.
+    }
+  }
+
+  boot();
+  syncHeaderOffset();
+  window.addEventListener('load', function () { syncHeaderOffset(); });
+  window.addEventListener('resize', function () { syncHeaderOffset(); });
+  setTimeout(syncHeaderOffset, 2500);
 })();
 ''';
 
