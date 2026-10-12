@@ -279,34 +279,50 @@ class _TimetableScreenState extends State<TimetableScreen> {
           for (final school in kSchools)
             Padding(
               padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(school.label),
-                selected: school.available && school.id == _schoolId,
-                onSelected: school.available
-                    ? (_) => _selectSchool(school.id)
-                    : null,
-                // Styled like the day tabs: selected is a filled yellow
-                // pill with dark text, unselected is an outlined
-                // transparent one — the old orange fill made the active
-                // school hard to read against the dark header.
-                selectedColor: AppColors.cardYellow,
-                backgroundColor: Colors.transparent,
-                labelStyle: TextStyle(
-                  color: school.available
-                      ? (school.id == _schoolId
-                            ? AppColors.textDark
-                            : Colors.white)
-                      : Colors.white38,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-                side: BorderSide(
-                  color: school.available ? Colors.white24 : Colors.white12,
-                ),
-                showCheckmark: false,
-              ),
+              child: _schoolChip(school),
             ),
         ],
+      ),
+    );
+  }
+
+  /// A school pill built from a plain [Container] (like the day tabs)
+  /// rather than a [ChoiceChip]: Material 3 chips paint their own
+  /// surface-tint layer, so even `backgroundColor: Colors.transparent`
+  /// left a visible fill on the unselected chips. Here unselected is a
+  /// true transparent outline and selected is a filled yellow pill.
+  Widget _schoolChip(SchoolConfig school) {
+    final available = school.available;
+    final selected = available && school.id == _schoolId;
+
+    return InkWell(
+      onTap: available ? () => _selectSchool(school.id) : null,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.cardYellow : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: !available
+                ? Colors.white12
+                : selected
+                ? AppColors.cardYellow
+                : Colors.white24,
+          ),
+        ),
+        child: Text(
+          school.label,
+          style: TextStyle(
+            color: !available
+                ? Colors.white38
+                : selected
+                ? AppColors.textDark
+                : Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+          ),
+        ),
       ),
     );
   }

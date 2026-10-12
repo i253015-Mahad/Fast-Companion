@@ -102,8 +102,19 @@ class TimetableService {
   static const Duration _timeout = Duration(seconds: 15);
 
   /// Bumped whenever the entry shape or parsing changes so stale caches
-  /// (missing the color-derived program/batch) are discarded.
-  static const int _cacheVersion = 3;
+  /// (missing the color-derived program/batch, or management batch codes
+  /// that are now stored as years) are discarded.
+  static const int _cacheVersion = 4;
+
+  /// The management sheet numbers its batches by odd intake counts
+  /// (`01`, `03`, `05`, `07`, with `01` being the newest) rather than by
+  /// year. This is the year that `01` joined; each +2 on the intake
+  /// number is one year earlier. The course levels confirm the mapping:
+  /// batch 01 sits in 1000-level courses (`AF1003`), 03 in 2000-level
+  /// (`AF2003`), 05 in 3000-level (`AF 3001`) and 07 in 4000-level
+  /// (`MG4011`). Bump this by one each fall, when the university admits
+  /// a fresh `01`.
+  static const int _managementIntakeYear = 2026;
 
   final Map<String, TimetableResult> _memory = {};
 
@@ -1050,7 +1061,11 @@ class TimetableService {
           }
         }
 
-        // Decompose the section code into department + batch year.
+        // Decompose the section code into department + batch. The
+        // department is the leading letters; the batch is an odd intake
+        // number (`01`/`03`/`05`/`07`) that [_managementBatch] turns into
+        // the admission year, so the batch filter reads the same as
+        // Computing's and Engineering's.
         var dept = '';
         var batch = '';
         if (section.isNotEmpty) {
@@ -1058,7 +1073,11 @@ class TimetableService {
           if (sm != null) {
             dept = sm.group(1)!.toUpperCase();
             final b = sm.group(2);
-            if (b != null) batch = b.length == 1 ? '0$b' : b;
+            if (b != null) {
+              // The sheet has stray unpadded codes ("AF3A"); pad to two
+              // digits before mapping.
+              batch = _managementBatch(b.length == 1 ? '0$b' : b);
+            }
           }
         }
         if (dept == 'MS') continue; // graduate — removed.
@@ -1082,6 +1101,15 @@ class TimetableService {
       }
     }
     return entries;
+  }
+
+  /// Management's intake code (`01`, `03`...) as the admission year.
+  /// Unknown or even codes pass through untouched, so nothing is
+  /// silently relabelled if the sheet ever changes shape.
+  static String _managementBatch(String code) {
+    final n = int.tryParse(code);
+    if (n == null || n < 1 || n.isEven || n > 20) return code;
+    return '${_managementIntakeYear - (n - 1) ~/ 2}';
   }
 
   // ================= CELL TEXT =================
