@@ -63,6 +63,34 @@ class TimetableEntry {
             caseSensitive: false,
           ).hasMatch(course));
 
+  /// The section with any sub-group suffix dropped.
+  ///
+  /// Computing splits a section into lab groups — `AI-A` for the shared
+  /// lectures plus `AI-A1` / `AI-A2` for labs — and a student thinks of
+  /// those as one section, so the filter offers `AI-A` alone and takes
+  /// every sub-group with it. Only a trailing digit after a single
+  /// letter counts (`CS-E2` -> `CS-E`), so engineering's `EE-A` and
+  /// management's `AF01A` / `FT07A/B` pass through untouched.
+  String get sectionGroup {
+    final m = RegExp(r'^(.+)-([A-Z])\d$').firstMatch(section);
+    return m == null ? section : '${m.group(1)!}-${m.group(2)!}';
+  }
+
+  /// A copy of this entry filed under [section] instead.
+  TimetableEntry withSection(String section) => TimetableEntry(
+    day: day,
+    startTime: startTime,
+    endTime: endTime,
+    course: course,
+    section: section,
+    program: program,
+    batch: batch,
+    room: room,
+    teacher: teacher,
+    isLab: isLab,
+    note: note,
+  );
+
   /// Sort key: classes in start-time order within a day.
   ///
   /// The sheets write times without AM/PM (`08:30` = morning, `01:00` =

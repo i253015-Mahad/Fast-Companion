@@ -102,9 +102,10 @@ class TimetableService {
   static const Duration _timeout = Duration(seconds: 15);
 
   /// Bumped whenever the entry shape or parsing changes so stale caches
-  /// (missing the color-derived program/batch, or management batch codes
-  /// that are now stored as years) are discarded.
-  static const int _cacheVersion = 4;
+  /// (missing the color-derived program/batch, management batch codes
+  /// that are now stored as years, or engineering sections folded into
+  /// their program prefix) are discarded.
+  static const int _cacheVersion = 5;
 
   /// The management sheet numbers its batches by odd intake counts
   /// (`01`, `03`, `05`, `07`, with `01` being the newest) rather than by
@@ -177,6 +178,10 @@ class TimetableService {
   /// Keeps only the entries a student would see, matching the chosen
   /// department, batch and section. Any empty filter passes everything
   /// for that dimension.
+  ///
+  /// A section matches either exactly or by its [TimetableEntry.sectionGroup],
+  /// so the filter's `AI-A` pill also picks up the `AI-A1` / `AI-A2`
+  /// lab groups.
   static List<TimetableEntry> filterBy(
     List<TimetableEntry> entries, {
     String department = '',
@@ -186,7 +191,11 @@ class TimetableService {
     return entries.where((e) {
       if (department.isNotEmpty && e.program != department) return false;
       if (batch.isNotEmpty && e.batch != batch) return false;
-      if (section.isNotEmpty && e.section != section) return false;
+      if (section.isNotEmpty &&
+          e.section != section &&
+          e.sectionGroup != section) {
+        return false;
+      }
       return true;
     }).toList();
   }
@@ -742,7 +751,48 @@ class TimetableService {
         }
       }
     }
-    return entries;
+    return _foldBareEngineeringSections(entries);
+  }
+
+  /// Section codes the engineering sheet writes with an explicit program
+  /// prefix (`CE-A`, `EE-A`) or as a bare letter (`A`, `B`, `C`, `D`).
+  static final RegExp _prefixedSectionRe = RegExp(r'^[A-Z]{2,3}-([A-Z]\d?)$');
+  static final RegExp _bareSectionRe = RegExp(r'^[A-Z]$');
+
+  /// Files stray bare-letter engineering sections under their program.
+  ///
+  /// The sheet prefixes the newest batch's sections (`CE-A`, `EE-A`) but
+  /// leaves older ones as a bare letter — and three different EE batches
+  /// (2023, 2024, 2025) all reuse `A`/`B`/`C`/`D`. So a bare letter is
+  /// *not* merely a sub-group of `<DEPT>-<letter>`: folding all of them
+  /// would drag three years of EE classes into the 2026 batch's section.
+  ///
+  /// Only fold where that same department **and** batch already owns the
+  /// prefixed section. In practice that catches the one `CE-A` lab the
+  /// sheet parked in bare `A`, so the CE section list reads
+  /// `CE-A` / `CE-B` / `CE-C` instead of growing a stray `A` — while
+  /// the EE letters keep meaning exactly what the sheet wrote.
+  static List<TimetableEntry> _foldBareEngineeringSections(
+    List<TimetableEntry> entries,
+  ) {
+    // "<program>|<batch>|<letter>" of every prefixed section present.
+    final owned = <String>{};
+    for (final e in entries) {
+      if (e.program.isEmpty || e.batch.isEmpty) continue;
+      final m = _prefixedSectionRe.firstMatch(e.section);
+      if (m != null) owned.add('${e.program}|${e.batch}|${m.group(1)!}');
+    }
+    if (owned.isEmpty) return entries;
+
+    return [
+      for (final e in entries)
+        e.program.isNotEmpty &&
+                e.batch.isNotEmpty &&
+                _bareSectionRe.hasMatch(e.section) &&
+                owned.contains('${e.program}|${e.batch}|${e.section}')
+            ? e.withSection('${e.program}-${e.section}')
+            : e,
+    ];
   }
 
   // ================= PARSING (CSV fallback / management) =================
@@ -946,7 +996,7 @@ class TimetableService {
         }
       }
     }
-    return entries;
+    return _foldBareEngineeringSections(entries);
   }
 
   /// Management sheet: day blocks (col 0), Classes/Labs (col 1), room

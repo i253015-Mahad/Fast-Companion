@@ -1,5 +1,7 @@
 // lib/Screens/timetable_screen.dart
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,8 +13,9 @@ import '../services/timetable_service.dart';
 /// Public, day-by-day timetable browser for the three FAST ISB schools.
 ///
 /// Data comes from the university's own Google Sheets (see
-/// [kSchools]); the chosen school/section persist between launches and
-/// the last fetch is cached so the screen works offline.
+/// [kSchools]). Each school remembers the department/batch/section it
+/// was last left on, so switching away and back restores it, and the
+/// last fetch is cached so the screen works offline.
 class TimetableScreen extends StatefulWidget {
   const TimetableScreen({super.key});
 
@@ -31,11 +34,27 @@ class _TimetableScreenState extends State<TimetableScreen> {
   ];
 
   static const _schoolPref = 'timetable_school';
-  static const _sectionPref = 'timetable_section';
-  static const _deptPref = 'timetable_department';
-  static const _batchPref = 'timetable_batch';
+
+  /// Each school keeps its own filters under a key like
+  /// `timetable_filters_computing`, holding
+  /// `{"department":…,"batch":…,"section":…}`. A missing key means the
+  /// school has always been left on "All".
+  static const _filtersPrefix = 'timetable_filters_';
+
+  /// Shared filter keys from builds where a single selection served
+  /// every school. Read once at startup (they hold the last-open
+  /// school's choice) and then dropped.
+  static const _legacyDeptPref = 'timetable_department';
+  static const _legacyBatchPref = 'timetable_batch';
+  static const _legacySectionPref = 'timetable_section';
 
   String _schoolId = 'computing';
+
+  /// The filters each school was last left on, kept in memory so
+  /// switching schools is a single synchronous [setState].
+  final Map<String, ({String department, String batch, String section})>
+  _filtersBySchool = {};
+
   String _department = '';
   String _batch = '';
   String _section = '';
@@ -56,19 +75,56 @@ class _TimetableScreenState extends State<TimetableScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
       final school = prefs.getString(_schoolPref);
-      final section = prefs.getString(_sectionPref);
-      final department = prefs.getString(_deptPref);
-      final batch = prefs.getString(_batchPref);
       if (school != null && kSchools.any((s) => s.id == school)) {
         _schoolId = school;
       }
-      _department = department ?? '';
-      _batch = batch ?? '';
-      _section = section ?? '';
+      await _restoreFilters(prefs);
+      final saved = _filtersBySchool[_schoolId];
+      if (saved != null) {
+        _department = saved.department;
+        _batch = saved.batch;
+        _section = saved.section;
+      }
     } catch (_) {
       // Preferences are best-effort; defaults are fine.
     }
     await _load();
+  }
+
+  /// Reads every school's remembered filters into [_filtersBySchool].
+  ///
+  /// Builds before filters were per-school kept one selection under a
+  /// shared set of keys, belonging to whichever school was last open.
+  /// That choice is adopted for its school so nothing is lost in the
+  /// upgrade, after which the shared keys are removed.
+  Future<void> _restoreFilters(SharedPreferences prefs) async {
+    for (final school in kSchools) {
+      final raw = prefs.getString('$_filtersPrefix${school.id}');
+      if (raw == null) continue;
+      try {
+        final map = jsonDecode(raw) as Map<String, dynamic>;
+        _filtersBySchool[school.id] = (
+          department: map['department'] as String? ?? '',
+          batch: map['batch'] as String? ?? '',
+          section: map['section'] as String? ?? '',
+        );
+      } catch (_) {
+        // A corrupt entry simply means "All" for that school.
+      }
+    }
+
+    const legacy = [_legacyDeptPref, _legacyBatchPref, _legacySectionPref];
+    if (_filtersBySchool[_schoolId] == null &&
+        legacy.any((key) => prefs.containsKey(key))) {
+      _filtersBySchool[_schoolId] = (
+        department: prefs.getString(_legacyDeptPref) ?? '',
+        batch: prefs.getString(_legacyBatchPref) ?? '',
+        section: prefs.getString(_legacySectionPref) ?? '',
+      );
+    }
+    for (final key in legacy) {
+      await prefs.remove(key);
+    }
   }
 
   SchoolConfig get _school =>
@@ -165,14 +221,16 @@ class _TimetableScreenState extends State<TimetableScreen> {
     return set.toList()..sort();
   }
 
-  /// Sections on offer for the current department/batch.
+  /// Sections on offer for the current department/batch. Sub-groups are
+  /// folded into their parent (`AI-A1` / `AI-A2` appear as just `AI-A`),
+  /// matching how [TimetableService.filterBy] treats a chosen section.
   List<String> _sectionsFor(TimetableResult result) {
     final set = <String>{};
     for (final e in result.entries) {
       if (e.isPlaceholder || e.section.isEmpty) continue;
       if (_department.isNotEmpty && e.program != _department) continue;
       if (_batch.isNotEmpty && e.batch != _batch) continue;
-      set.add(e.section);
+      set.add(e.sectionGroup);
     }
     return set.toList()..sort();
   }
@@ -190,24 +248,35 @@ class _TimetableScreenState extends State<TimetableScreen> {
   }
 
   Future<void> _savePrefs() async {
+    final filters = (department: _department, batch: _batch, section: _section);
+    _filtersBySchool[_schoolId] = filters;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_schoolPref, _schoolId);
-      await prefs.setString(_deptPref, _department);
-      await prefs.setString(_batchPref, _batch);
-      await prefs.setString(_sectionPref, _section);
+      // A record isn't JSON-encodable on its own, so widen it to a map.
+      await prefs.setString(
+        '$_filtersPrefix$_schoolId',
+        jsonEncode({
+          'department': filters.department,
+          'batch': filters.batch,
+          'section': filters.section,
+        }),
+      );
     } catch (_) {}
   }
 
   void _selectSchool(String id) {
     if (id == _schoolId) return;
+    final saved = _filtersBySchool[id];
     setState(() {
       _schoolId = id;
-      // The three schools publish entirely different programs — start
-      // the filters over rather than carrying a section across.
-      _department = '';
-      _batch = '';
-      _section = '';
+      // Each school restores the filters it was last left on — the three
+      // schools publish entirely different programs, so a saved section
+      // means nothing to the next one. A school that has never been
+      // opened starts back on "All".
+      _department = saved?.department ?? '';
+      _batch = saved?.batch ?? '';
+      _section = saved?.section ?? '';
       _result = null;
       _day = '';
     });
