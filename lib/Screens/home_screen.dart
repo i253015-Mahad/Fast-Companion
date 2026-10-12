@@ -12,6 +12,7 @@ import 'todo_screen.dart';
 import 'counter_screen.dart';
 import 'timed_task_screen.dart';
 import 'timetable_screen.dart';
+import 'flex_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:fast_companion/services/database_service.dart';
@@ -41,7 +42,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String searchQuery = "";
 
   // Bottom nav: 0 = Notes, 1 = Timetable, 2 = Classes & Offices
-  // (placeholder), 3 = Flex (placeholder).
+  // (placeholder), 3 = Flex (the live portal in a WebView).
   // Held in an IndexedStack so the Notes state (search text, scroll,
   // loaded notes) survives a round trip to another tab.
   int _navIndex = 0;
@@ -1427,7 +1428,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             const TimetableScreen(),
             _buildClassesOfficesPlaceholder(),
-            _buildFlexPlaceholder(),
+            const FlexScreen(),
           ],
         ),
       ),
@@ -1556,7 +1557,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 child: _buildNavTab(
                   index: 2,
                   icon: Icons.meeting_room_rounded,
-                  label: "Classes & Offices",
+                  label: "Rooms",
                 ),
               ),
               const SizedBox(width: 10),
@@ -1610,27 +1611,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Placeholder for the not-yet-built Flex tab.
-  Widget _buildFlexPlaceholder() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: const [
-          Icon(Icons.school_rounded, size: 56, color: Colors.lightBlueAccent),
-          SizedBox(height: 16),
-          Text(
-            "Flex is coming soon!",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
             ),
           ),
         ],

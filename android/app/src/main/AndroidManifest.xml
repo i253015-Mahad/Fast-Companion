@@ -14,6 +14,20 @@
     <!-- Re-registers scheduled alarms after a reboot / app update. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
+    <!-- Lets the Flex tab hand downloads, mail links and other external
+         URLs to the system browser (url_launcher). On Android 11+ the app
+         can only resolve intents it declares here. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="mailto"/>
+        </intent>
+    </queries>
+
     <application
         android:label="Fast Companion"
         android:name="${applicationName}"
