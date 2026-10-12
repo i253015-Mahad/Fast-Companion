@@ -40,7 +40,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final TextEditingController searchController = TextEditingController();
   String searchQuery = "";
 
-  // Bottom nav: 0 = Notes, 1 = Timetable, 2 = Flex (placeholder).
+  // Bottom nav: 0 = Notes, 1 = Timetable, 2 = Classes & Offices
+  // (placeholder), 3 = Flex (placeholder).
   // Held in an IndexedStack so the Notes state (search text, scroll,
   // loaded notes) survives a round trip to another tab.
   int _navIndex = 0;
@@ -1425,6 +1426,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
             const TimetableScreen(),
+            _buildClassesOfficesPlaceholder(),
             _buildFlexPlaceholder(),
           ],
         ),
@@ -1550,10 +1552,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   label: "Timetable",
                 ),
               ),
-              const SizedBox(width: 10),
               Expanded(
                 child: _buildNavTab(
                   index: 2,
+                  icon: Icons.meeting_room_rounded,
+                  label: "Classes & Offices",
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildNavTab(
+                  index: 3,
                   icon: Icons.school_rounded,
                   label: "Flex",
                 ),
@@ -1589,12 +1598,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         children: [
           Icon(icon, color: color),
           const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              color: active ? Colors.white : Colors.white54,
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
+          // Scaled down rather than wrapped: "Classes & Offices" is wide
+          // enough to break onto a second line, which would drop this
+          // tab's icon out of line with its neighbours.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: active ? Colors.white : Colors.white54,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -1612,6 +1627,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           SizedBox(height: 16),
           Text(
             "Flex is coming soon!",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Placeholder for the not-yet-built Classes & Offices tab.
+  Widget _buildClassesOfficesPlaceholder() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Icon(
+            Icons.meeting_room_rounded,
+            size: 56,
+            color: Colors.lightBlueAccent,
+          ),
+          SizedBox(height: 16),
+          Text(
+            "Classes & Offices is coming soon!",
+            textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white,
               fontSize: 18,
