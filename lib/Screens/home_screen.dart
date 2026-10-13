@@ -1560,7 +1560,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   label: "Rooms",
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 0),
               Expanded(
                 child: _buildNavTab(
                   index: 3,
@@ -1631,7 +1631,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
           SizedBox(height: 16),
           Text(
-            "Classes & Offices is coming soon!",
+            "Rooms Feature coming soon!",
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white,
