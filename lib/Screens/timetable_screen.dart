@@ -235,7 +235,59 @@ class _TimetableScreenState extends State<TimetableScreen> {
     return set.toList()..sort();
   }
 
-  /// Applies new filter values, re-validates the rest against the loaded
+  /// What a section chip reads.
+  ///
+  /// A section code repeats the filters above it, and once a filter has
+  /// pinned that part the repeat is only noise — so it is dropped from
+  /// the *display* alone. The full value stays in `[_section]`, in the
+  /// saved per-school filters, and in what [TimetableService.filterBy]
+  /// matches on.
+  ///
+  /// Which parts are redundant depends on how the school writes them:
+  ///
+  ///  * **Computing and Engineering** write `<dept>-<letter>` (`SE-A`).
+  ///    The dept goes as soon as a department is chosen; the batch
+  ///    never appears in the code, so it takes no part in this. With no
+  ///    department chosen the row spans several at once, where two can
+  ///    each have an `A` — there the prefix is the only thing telling
+  ///    them apart and it stays.
+  ///  * **Management** writes `<dept><intake><letter>` with no
+  ///    separator (`AF01A`). The dept letters go once a department is
+  ///    chosen, and the intake digits go once a batch (year) is too —
+  ///    the digits are what makes `A` one section rather than every
+  ///    year's `A`. A batch on its own pins nothing: the dept is then
+  ///    the only thing separating `AF` from `BBA`, so nothing is cut.
+  String _sectionLabel(String section) {
+    if (section.isEmpty) return section;
+
+    if (_school.layout == SheetLayout.management) {
+      if (_department.isEmpty) return section;
+      final m = RegExp(r'^([A-Za-z]+)(\d+)?(.*)$').firstMatch(section);
+      if (m == null) return section;
+      // The year stays when no batch is chosen; only the dept letters
+      // are redundant at that point.
+      final tail = _batch.isEmpty
+          ? '${m.group(2) ?? ''}${m.group(3)!}'
+          : m.group(3)!;
+      return tail.isEmpty ? section : tail;
+    }
+
+    if (_department.isEmpty) return section;
+    final i = section.lastIndexOf('-');
+    if (i < 0) return section;
+    final letter = section.substring(i + 1);
+    return letter.isEmpty ? section : letter;
+  }
+
+  /// Display labels for a whole section row. Stripping normally keeps
+  /// them unique because the prefix is constant within a department,
+  /// but if two somehow collide the row falls back to the raw values —
+  /// two pills reading the same thing would be untappable.
+  List<String> _sectionLabels(List<String> sections) {
+    final labels = sections.map(_sectionLabel).toList();
+    return labels.toSet().length == labels.length ? labels : sections;
+  }
+
   /// sheet, and persists the choice. The selected day is left alone.
   void _setFilters({String? department, String? batch, String? section}) {
     setState(() {
@@ -312,7 +364,13 @@ class _TimetableScreenState extends State<TimetableScreen> {
           if (batches.isNotEmpty)
             _filterRow('BATCH', batches, _batch, _selectBatch),
           if (sections.isNotEmpty)
-            _filterRow('SECTION', sections, _section, _selectSection),
+            _filterRow(
+              'SECTION',
+              sections,
+              _section,
+              _selectSection,
+              displayLabels: _sectionLabels(sections),
+            ),
           if (!_loading && _error == null && result != null) ...[
             _buildDayTabs(filtered),
             const SizedBox(height: 4),
@@ -415,12 +473,35 @@ class _TimetableScreenState extends State<TimetableScreen> {
   /// scrollable "All + options" pills to its right. Department, batch and
   /// section each get their own row so a student can narrow by any
   /// combination instead of one catch-all section list.
+  ///
+  /// [displayLabels] lets a row show a shorter word than the value it
+  /// selects: the pill is labelled from it, but selection still compares
+  /// against [options] so the underlying value never changes.
   Widget _filterRow(
     String label,
     List<String> options,
     String selected,
-    ValueChanged<String> onSelect,
-  ) {
+    ValueChanged<String> onSelect, {
+    List<String>? displayLabels,
+  }) {
+    // Built before the widget rather than with a collection-for: every
+    // closure in a `for (var i = 0; …)` body captures the *same* `i`, so
+    // tapping any pill would select the last option. Declaring `option`
+    // inside the body gives each pill its own value to close over.
+    final pills = <Widget>[
+      _sectionPill('All', selected.isEmpty, () => onSelect('')),
+    ];
+    for (var i = 0; i < options.length; i++) {
+      final option = options[i];
+      pills.add(
+        _sectionPill(
+          displayLabels == null ? option : displayLabels[i],
+          selected == option,
+          () => onSelect(option),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -441,17 +522,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _sectionPill('All', selected.isEmpty, () => onSelect('')),
-                  for (final option in options)
-                    _sectionPill(
-                      option,
-                      selected == option,
-                      () => onSelect(option),
-                    ),
-                ],
-              ),
+              child: Row(children: pills),
             ),
           ),
         ],
@@ -621,7 +692,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
   String _emptyDayMessage() {
     final active = <String>[];
     if (_section.isNotEmpty) {
-      active.add(_section);
+      // Same wording as the chip the student picked it from.
+      active.add(_sectionLabel(_section));
     } else if (_department.isNotEmpty) {
       active.add(_department);
     }

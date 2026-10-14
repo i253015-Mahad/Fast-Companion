@@ -105,7 +105,7 @@ class TimetableService {
   /// (missing the color-derived program/batch, management batch codes
   /// that are now stored as years, or engineering sections folded into
   /// their program prefix) are discarded.
-  static const int _cacheVersion = 5;
+  static const int _cacheVersion = 6;
 
   /// The management sheet numbers its batches by odd intake counts
   /// (`01`, `03`, `05`, `07`, with `01` being the newest) rather than by
@@ -1106,7 +1106,7 @@ class TimetableService {
         if (k + 1 < cells.length) {
           final next = cells[k + 1];
           if (sectionRe.hasMatch(next.text)) {
-            section = next.text.replaceAll(' ', '');
+            section = _padManagementIntake(next.text.replaceAll(' ', ''));
             k++; // consume it so it isn't mistaken for a course
           }
         }
@@ -1160,6 +1160,24 @@ class TimetableService {
     final n = int.tryParse(code);
     if (n == null || n < 1 || n.isEven || n > 20) return code;
     return '${_managementIntakeYear - (n - 1) ~/ 2}';
+  }
+
+  /// Pads a one-digit intake so both spellings are one section.
+  ///
+  /// The sheet writes `AF3A` next to `AF03A`, `BBA3A` next to
+  /// `BBA03A`, `FT3A` next to `FT03A` — the same section (batch
+  /// `03` = the 2025 intake, which is what [_managementBatch] already
+  /// maps both to) typed two ways in different blocks. Left as-is the
+  /// section list offers both, and once the code is shortened for
+  /// display they would read as the very same chip twice.
+  ///
+  /// Only a single digit *between* the department letters and the
+  /// section letters counts, so `AF07A`, `BSBA01E` and `FT07A/B` are
+  /// left alone.
+  static String _padManagementIntake(String section) {
+    final m = RegExp(r'^([A-Za-z]{2,5})(\d)(?=[A-Za-z])').firstMatch(section);
+    if (m == null) return section;
+    return '${m.group(1)!}0${m.group(2)!}${section.substring(m.end)}';
   }
 
   // ================= CELL TEXT =================
