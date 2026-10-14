@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/note_card.dart';
+import '../widgets/account_avatar.dart';
 import '../models/note.dart';
 import 'edit_note_screen.dart';
 import 'todo_screen.dart';
@@ -18,6 +19,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:fast_companion/services/database_service.dart';
 import 'package:fast_companion/services/local_storage_service.dart';
 import 'package:fast_companion/services/multi_account_auth_service.dart';
+import 'package:fast_companion/services/profile_photo_cache.dart';
 import 'package:fast_companion/services/home_widget_service.dart';
 import 'package:fast_companion/services/reminder_notification_service.dart';
 import '../app_signals.dart';
@@ -117,24 +119,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircleAvatar(
+              AccountAvatar(
+                photoUrl: activePhotoUrl,
                 radius: 35,
                 backgroundColor: AppColors.cardOrange,
-                backgroundImage: activePhotoUrl.isNotEmpty
-                    ? NetworkImage(activePhotoUrl)
-                    : null,
-                child: activePhotoUrl.isEmpty
-                    ? Text(
-                        activeAccount['name']!.isNotEmpty
-                            ? activeAccount['name']![0].toUpperCase()
-                            : '?',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      )
-                    : null,
+                fallback: Text(
+                  activeAccount['name']!.isNotEmpty
+                      ? activeAccount['name']![0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
               const SizedBox(height: 15),
               Text(
@@ -162,20 +160,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           .map((account) {
                             return ListTile(
                               contentPadding: EdgeInsets.zero,
-                              leading: CircleAvatar(
+                              leading: AccountAvatar(
+                                photoUrl: account['photoUrl'],
                                 radius: 16,
-                                backgroundImage: account['photoUrl']!.isNotEmpty
-                                    ? NetworkImage(account['photoUrl']!)
-                                    : null,
-                                child: account['photoUrl']!.isEmpty
-                                    ? Text(
-                                        account['name']![0].toUpperCase(),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12,
-                                        ),
-                                      )
-                                    : null,
+                                fallback: Text(
+                                  account['name']![0].toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                  ),
+                                ),
                               ),
                               title: Text(
                                 account['name']!,
@@ -344,18 +338,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// The avatar itself; [photoUrl] of '' or null falls back to the generic
   /// account icon.
   Widget _buildAccountCircle(String? photoUrl) {
-    final hasPhoto = photoUrl != null && photoUrl.isNotEmpty;
-    return CircleAvatar(
+    return AccountAvatar(
+      photoUrl: photoUrl,
       radius: 18,
       backgroundColor: Colors.white12,
-      backgroundImage: hasPhoto ? NetworkImage(photoUrl) : null,
-      child: hasPhoto
-          ? null
-          : const Icon(
-              Icons.account_circle_outlined,
-              color: Colors.white70,
-              size: 24,
-            ),
+      fallback: const Icon(
+        Icons.account_circle_outlined,
+        color: Colors.white70,
+        size: 24,
+      ),
     );
   }
 
@@ -517,6 +508,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Re-create a live session for every previously signed-in account so
     // switching is instant from the moment the app opens.
     await _authService.restoreSessions(_accountPool);
+
+    // Put every account's photo on the phone now, while there is
+    // probably a network to do it with, so none of them is a letter the
+    // next time the signal drops.
+    ProfilePhotoCache.instance.warmAll([
+      for (final account in _accountPool) account['photoUrl'],
+    ]);
 
     // Prefer whichever account was active in the legacy single-session
     // default FirebaseApp (covers users updating from the old version);

@@ -22,6 +22,7 @@ import 'models/note.dart';
 import 'services/local_storage_service.dart';
 import 'services/multi_account_auth_service.dart';
 import 'services/home_widget_service.dart';
+import 'widgets/account_avatar.dart';
 
 const MethodChannel _configChannel = MethodChannel('notes_widget_configure');
 
@@ -249,19 +250,15 @@ class _WidgetConfigureFlowState extends State<_WidgetConfigureFlow> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      leading: CircleAvatar(
+                      leading: AccountAvatar(
+                        photoUrl: photoUrl,
                         backgroundColor: AppColors.cardOrange,
-                        backgroundImage: photoUrl.isNotEmpty
-                            ? NetworkImage(photoUrl)
-                            : null,
-                        child: photoUrl.isEmpty
-                            ? Text(
-                                (acc['name'] ?? '?').isNotEmpty
-                                    ? acc['name']![0].toUpperCase()
-                                    : '?',
-                                style: const TextStyle(color: Colors.white),
-                              )
-                            : null,
+                        fallback: Text(
+                          (acc['name'] ?? '?').isNotEmpty
+                              ? acc['name']![0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(color: Colors.white),
+                        ),
                       ),
                       title: Text(
                         acc['name'] ?? 'Google User',
