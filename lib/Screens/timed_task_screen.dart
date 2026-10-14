@@ -120,21 +120,50 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
 
   // Unchecked tasks first (most urgent first), then checked tasks. That
   // ordering is what the "checked items" header below relies on.
+  //
+  // `now` is taken once for the whole pass, and it has to be. Taking it
+  // per task — as this used to — means two tasks sharing a due date are
+  // measured against two different clocks, microseconds apart, so each
+  // one comes out slightly less urgent than the other depending on which
+  // side of the comparison it landed. Every pass then disagrees with the
+  // one before it about which came first, and with a ticker calling this
+  // once a second the two rows swap places forever.
+  //
+  // Tasks that still compare equal are held in the order they were
+  // already in, because List.sort is not stable — without that, two
+  // undated tasks would trade places on every pass too.
   void _sortTasksByUrgency() {
-    _timedItems.sort((a, b) {
-      if (a.isDone && !b.isDone) return 1;
-      if (!a.isDone && b.isDone) return -1;
-      return _getRemainingDuration(a).compareTo(_getRemainingDuration(b));
-    });
+    final now = DateTime.now();
+    final rows = [
+      for (var i = 0; i < _timedItems.length; i++)
+        (
+          item: _timedItems[i],
+          node: i < _focusNodes.length ? _focusNodes[i] : null,
+          position: i,
+        ),
+    ];
+
+    rows.sort(
+      (a, b) => compareTimedTasks(a.item, b.item, now, a.position, b.position),
+    );
+
+    _timedItems = [for (final row in rows) row.item];
+    // The focus nodes ride along with the task they belong to. They are
+    // looked up by index while building, so reordering the tasks and
+    // leaving the nodes behind would hand "next" on the keyboard to a
+    // different row than the one being typed in.
+    _focusNodes
+      ..clear()
+      ..addAll([
+        for (final row in rows)
+          if (row.node != null) row.node!,
+      ]);
   }
 
-  Duration _getRemainingDuration(TodoItem item) {
-    if (item.isDone && item.remainingDuration != null)
-      return item.remainingDuration!;
-    if (item.dueDateTime == null) return const Duration(days: 99999);
-    final diff = item.dueDateTime!.difference(DateTime.now());
-    return diff.isNegative ? Duration.zero : diff;
-  }
+  /// What the countdown reads. See [remainingFor], which sorts against a
+  /// clock it was handed rather than reading its own.
+  Duration _getRemainingDuration(TodoItem item) =>
+      remainingFor(item, DateTime.now());
 
   /// Inserts a new EMPTY row (no date yet) after [item] — or at the end when
   /// [item] is null — and focuses its label field. No dialogs: the due date
@@ -142,7 +171,9 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
   void _createNewItemRow({TodoItem? after}) {
     final node = FocusNode();
     setState(() {
-      final insertAt = after == null ? _timedItems.length : _timedItems.indexOf(after) + 1;
+      final insertAt = after == null
+          ? _timedItems.length
+          : _timedItems.indexOf(after) + 1;
       _timedItems.insert(insertAt, TodoItem(text: "", dueDateTime: null));
       _focusNodes.insert(insertAt, node);
     });
@@ -291,9 +322,9 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
                       : (_parseCountdown(item) == "tap to set date"
                             ? Colors.white38
                             : (_parseCountdown(item).contains('s left') ||
-                                          _parseCountdown(item).contains('m left')
-                                      ? AppColors.cardOrange
-                                      : Colors.white60)),
+                                      _parseCountdown(item).contains('m left')
+                                  ? AppColors.cardOrange
+                                  : Colors.white60)),
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                   fontStyle: _parseCountdown(item) == "tap to set date"
@@ -410,4 +441,49 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
       ),
     );
   }
+}
+
+/// Where [a] goes relative to [b]: unchecked before checked, most urgent
+/// first, and tasks that are equal in both hold the order they were
+/// already in via [positionOfA]/[positionOfB].
+///
+/// [now] is a parameter rather than something this reads off the wall
+/// clock, and that is the whole point. The screen re-sorts once a second
+/// while the countdown runs, and a comparator that took its own reading
+/// would measure [a] and [b] against two different clocks — microseconds
+/// apart, but far enough that two tasks sharing a due date each come out
+/// the more urgent of the two depending on which side of the comparison
+/// they landed on. Every pass would then disagree with the one before
+/// it, and the two rows would trade places forever.
+///
+/// The position tie-break matters for the same reason at a smaller
+/// scale: `List.sort` is not stable, so without it two tasks that
+/// genuinely tie (both undated, both overdue) would be free to shuffle
+/// on every pass.
+@visibleForTesting
+int compareTimedTasks(
+  TodoItem a,
+  TodoItem b,
+  DateTime now,
+  int positionOfA,
+  int positionOfB,
+) {
+  if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+  final cmp = remainingFor(a, now).compareTo(remainingFor(b, now));
+  if (cmp != 0) return cmp;
+  return positionOfA.compareTo(positionOfB);
+}
+
+/// What is left on [item] as of [now]: [Duration.zero] once it has run
+/// out, and a large stand-in for a task with no date at all so those
+/// sort last. A finished task keeps the frozen figure it was finished
+/// with rather than counting against the clock it no longer obeys.
+@visibleForTesting
+Duration remainingFor(TodoItem item, DateTime now) {
+  if (item.isDone && item.remainingDuration != null) {
+    return item.remainingDuration!;
+  }
+  if (item.dueDateTime == null) return const Duration(days: 99999);
+  final diff = item.dueDateTime!.difference(now);
+  return diff.isNegative ? Duration.zero : diff;
 }
