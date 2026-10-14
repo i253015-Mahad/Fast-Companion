@@ -144,11 +144,29 @@ class _FlexScreenState extends State<FlexScreen> {
       '.m-header-head { background-color: #355C7D !important; }',
 
       // The portal pulls the topbar up over the page-title row with
-      // margin-top:-50px, so an opaque background here is what was
-      // hiding "Home". Transparent lets the slate of .m-header-head
-      // show through unchanged — the same colour it was being given.
+      // `top: -71px` (.m-header--fixed-mobile), and an opaque
+      // background here is what was hiding "Home". Transparent lets the
+      // slate of .m-header-head show through unchanged — the same
+      // colour it was being given.
       '.m-topbar { background-color: transparent !important;',
       '  box-shadow: none !important; }',
+
+      // …and that same -71px dragged the avatar up under the brand row,
+      // whose box is the header's own 0..60px, so the brand painted over
+      // the top of it. Measured on device: the avatar is 40px and sits
+      // 9px inside the topbar, so it landed at 48..88 on the profile
+      // page and 42..82 on Attendance — the brand cut 12px and 18px off
+      // the top respectively (the photo's blue starts at device y=532,
+      // i.e. exactly CSS 60, on both). Because the topbar is positioned
+      // off the title row, which is 110 tall on one page and 104 on the
+      // other, a single shift has to work for both: -51px puts the
+      // avatar at 68..108 and 62..102 — clear of the brand either way,
+      // and landing 2px short of that page's own title-row bottom, which
+      // falls out of the arithmetic rather than being fitted per page.
+      // Scoped through body so it outranks the portal's own
+      // `.m-header--fixed-mobile .m-topbar` by specificity rather than
+      // depending on injection order.
+      'body.m-header--fixed-mobile .m-topbar { top: -51px !important; }',
 
       // The portal's navigation mask: rgba(255,255,255,0.6) holding a
       // white .loader-box, outside .m_body — without this every page
@@ -165,7 +183,87 @@ class _FlexScreenState extends State<FlexScreen> {
       // which is confirmation that this button is meant to adapt.
       '.m-scroll-top { background: #355C7D !important;',
       '  box-shadow: 0 0 15px 1px rgba(0, 0, 0, 0.5) !important; }',
-      '.m-scroll-top > i { color: #ffffff !important; }'
+      '.m-scroll-top > i { color: #ffffff !important; }',
+
+      // Not theming — a deliberate UI change. This is the portal's own
+      // offcanvas close button, #m_aside_left_close_btn, which floats
+      // at the top-right of the drawer. The hamburger already toggles
+      // the drawer and the overlay closes it, so it is redundant here;
+      // removed on request.
+      '.m-aside-left-close { display: none !important; }',
+
+      // =================================================================
+      // Login page.
+      //
+      // /Login shares none of the selectors above: it has no .m-body and
+      // no .m-wrapper (fetched and checked — the page is .m-page >
+      // #m_login.m-login.m-login--1, split into .m-login__aside for the
+      // form and .m-login__content for the photo). So the invert never
+      // reached it and the only rule that landed was the dark html/body
+      // base sitting behind an opaque white panel: .m-login.m-login--1
+      // { background:#fff }.
+      //
+      // Every rule below is scoped to .m-login.m-login--1, which exists
+      // on no other page. That matters: the real pages put their fields
+      // inside the inverted .m-wrapper, so an unscoped dark fill there
+      // would invert straight back to white.
+      // =================================================================
+      '.m-login.m-login--1 { background-color: #111111 !important;',
+      '  color: #dcdcdc !important; }',
+
+      // The headings, field captions and checkbox carry no colour of
+      // their own and were inheriting Bootstrap's near-black #212529.
+      // The photo side's welcome text is already #fff, and the sign-in
+      // button .btn-primary is indigo #5867dd, so neither needs help.
+      '.m-login.m-login--1 h5,',
+      '.m-login.m-login--1 .m-login__title,',
+      '.m-login.m-login--1 .m-login__desc,',
+      '.m-login.m-login--1 .m-form__help,',
+      '.m-login.m-login--1 .m-checkbox { color: #dcdcdc !important; }',
+
+      // Bootstrap's #fff fields. :focus repaints them white again and
+      // adds a blue glow, and Chrome's autofill paints an opaque white
+      // block over a remembered username — all three are covered here.
+      '.m-login.m-login--1 .form-control {',
+      '  background-color: #1a1a1a !important;',
+      '  border-color: #3a3a3a !important;',
+      '  color: #ffffff !important; }',
+      '.m-login.m-login--1 .form-control:focus {',
+      '  background-color: #1a1a1a !important;',
+      '  border-color: #5867dd !important;',
+      '  box-shadow: none !important; }',
+      '.m-login.m-login--1 .form-control::placeholder {',
+      '  color: #8a8a8a !important; }',
+      '.m-login.m-login--1 .form-control:-webkit-autofill {',
+      '  -webkit-box-shadow: 0 0 0 1000px #1a1a1a inset !important;',
+      '  -webkit-text-fill-color: #ffffff !important; }',
+
+      // The user/lock boxes bolted onto the ends of those fields:
+      // #e9ecef by default.
+      '.m-login.m-login--1 .input-group-addon {',
+      '  background-color: #1a1a1a !important;',
+      '  border-color: #3a3a3a !important;',
+      '  color: #b9c2c9 !important; }',
+
+      // "Forgot password?" — the portal's #3f51b5 is all but invisible
+      // against #111, so it keeps the hue but takes the value up.
+      '.m-login.m-login--1 .m-link { color: #8c9eff !important; }',
+
+      // The photo panel (bg-5.jpg) is kept rather than replaced, but
+      // pushed back so the page reads as dark. An inset shadow is
+      // painted over the background yet under the content, so the white
+      // welcome text sitting on the photo is untouched — and the
+      // background-image URL never has to be rewritten.
+      '.m-login.m-login--1 .m-login__content {',
+      '  box-shadow: inset 0 0 0 2000px rgba(0, 0, 0, 0.55) !important; }',
+
+      // The CAPTCHA is a cross-origin iframe, so it can't be restyled
+      // from here — inverted like every other piece of media instead.
+      // The portal serves reCAPTCHA or Turnstile depending on the day,
+      // so both are covered.
+      '.m-login.m-login--1 .cf-turnstile,',
+      '.m-login.m-login--1 .g-recaptcha {',
+      '  filter: invert(1) hue-rotate(180deg) !important; }'
     ].join('\\n');
 
     var style = document.createElement('style');
@@ -180,11 +278,15 @@ class _FlexScreenState extends State<FlexScreen> {
   // over the page title *and* over the first 50px of the page. This
   // moves the content down to where the header really ends.
   //
-  // Only the structural rows are measured, never every descendant: the
-  // topbar's dropdown menu is a descendant and would report a much
-  // larger bottom while open, but a row's own border box never includes
-  // what overflows it. The value is absolute rather than incremental,
-  // so re-running on load or resize is safe.
+  // Only the rows that actually paint are measured, never every
+  // descendant: the topbar's dropdown menu is a descendant and would
+  // report a much larger bottom while open, but a row's own border box
+  // never includes what overflows it. The topbar itself is excluded —
+  // it is transparent, so its box adds nothing visible, and counting it
+  // would push the content 7px past the slate for no reason; the avatar
+  // inside it ends 2px short of the title row's bottom regardless. The
+  // value is absolute rather than incremental, so re-running on load or
+  // resize is safe.
   function syncHeaderOffset(tries) {
     try {
       var header = document.querySelector('header.m-header');
@@ -196,8 +298,7 @@ class _FlexScreenState extends State<FlexScreen> {
         }
         return;
       }
-      var rows = header.querySelectorAll(
-        '.m-brand, .m-header-head, .m-topbar');
+      var rows = header.querySelectorAll('.m-brand, .m-header-head');
       var bottom = 0;
       for (var i = 0; i < rows.length; i++) {
         var edge = rows[i].getBoundingClientRect().bottom;
