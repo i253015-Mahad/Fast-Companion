@@ -264,6 +264,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       (acc) => acc['uid'] == signedOutUid,
                     );
                     await LocalStorageService.saveAccounts(_accountPool);
+                    await LocalStorageService.clearActiveUid();
                     await HomeWidgetService.clearForUid(signedOutUid);
                   }
 
@@ -429,6 +430,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       'name': session.name,
       'photoUrl': session.photoUrl,
     });
+    // Written on every switch, not just the first, so the next launch
+    // opens on whichever account was last in use.
+    await LocalStorageService.saveActiveUid(session.uid);
     final cached = await LocalStorageService.loadNotes(session.uid);
     if (!mounted) return;
     setState(() {
@@ -516,11 +520,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       for (final account in _accountPool) account['photoUrl'],
     ]);
 
-    // Prefer whichever account was active in the legacy single-session
-    // default FirebaseApp (covers users updating from the old version);
-    // otherwise fall back to the first restored session.
+    // The account that was on screen last is the one to open on. The pool
+    // is everyone who has ever signed in, in the order they were added —
+    // so falling back to "first" reopens on the account that was set up
+    // first, which is rarely the one being used now.
+    final lastActiveUid = await LocalStorageService.loadActiveUid();
+
+    // Then whichever account was active in the legacy single-session
+    // default FirebaseApp (covers users updating from the old version),
+    // and failing all that, any session that came back at all.
     final legacyUid = FirebaseAuth.instance.currentUser?.uid;
     final startupSession =
+        _authService.sessionFor(lastActiveUid) ??
         _authService.sessionFor(legacyUid) ??
         (_authService.sessions.isNotEmpty
             ? _authService.sessions.values.first

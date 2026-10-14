@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/note.dart';
 
@@ -90,6 +91,48 @@ class LocalStorageService {
     } catch (e) {
       print("Account cache read failed: $e");
       return [];
+    }
+  }
+
+  // ================= ACTIVE ACCOUNT =================
+
+  static const String _activeUidKey = 'active_account_uid';
+
+  /// Which account the app should open on.
+  ///
+  /// The account pool is an ordered list of everyone who has signed in,
+  /// not a record of who is being used, so without this the app reopens
+  /// on whichever account happened to be added first — usually not the
+  /// one that was on screen last.
+  static Future<void> saveActiveUid(String uid) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_activeUidKey, uid);
+    } catch (e) {
+      debugPrint("Active account save failed: $e");
+    }
+  }
+
+  static Future<String?> loadActiveUid() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final uid = prefs.getString(_activeUidKey);
+      return (uid == null || uid.isEmpty) ? null : uid;
+    } catch (e) {
+      debugPrint("Active account read failed: $e");
+      return null;
+    }
+  }
+
+  /// Dropped when the account it names signs out, so the next launch
+  /// falls back to another account rather than one that is gone.
+  static Future<void> clearActiveUid() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_activeUidKey);
+    } catch (e) {
+      debugPrint("Active account clear failed: $e");
     }
   }
 }
