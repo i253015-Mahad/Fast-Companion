@@ -41,8 +41,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final TextEditingController searchController = TextEditingController();
   String searchQuery = "";
 
-  // Bottom nav: 0 = Notes, 1 = Timetable, 2 = Classes & Offices
-  // (placeholder), 3 = Flex (the live portal in a WebView).
+  // Bottom nav: 0 = Notes, 1 = Timetable, 2 = Rooms (placeholder),
+  // 3 = Flex (the live portal in a WebView).
   // Held in an IndexedStack so the Notes state (search text, scroll,
   // loaded notes) survives a round trip to another tab.
   int _navIndex = 0;
@@ -1427,7 +1427,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
             const TimetableScreen(),
-            _buildClassesOfficesPlaceholder(),
+            _buildRoomsPlaceholder(),
             const FlexScreen(),
           ],
         ),
@@ -1560,7 +1560,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   label: "Rooms",
                 ),
               ),
-              const SizedBox(width: 0),
               Expanded(
                 child: _buildNavTab(
                   index: 3,
@@ -1599,9 +1598,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         children: [
           Icon(icon, color: color),
           const SizedBox(height: 2),
-          // Scaled down rather than wrapped: "Classes & Offices" is wide
-          // enough to break onto a second line, which would drop this
-          // tab's icon out of line with its neighbours.
+          // Scaled down rather than wrapped: a label wider than its cell
+          // would break onto a second line and drop this tab's icon out
+          // of line with its neighbours.
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(
@@ -1618,8 +1617,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// Placeholder for the not-yet-built Classes & Offices tab.
-  Widget _buildClassesOfficesPlaceholder() {
+  /// Placeholder for the not-yet-built Rooms tab.
+  Widget _buildRoomsPlaceholder() {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
