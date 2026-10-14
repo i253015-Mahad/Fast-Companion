@@ -1,5 +1,6 @@
 // lib/Screens/timetable_screen.dart
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -8,7 +9,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../models/timetable_entry.dart';
+import '../services/flex_attendance_service.dart';
+import '../services/flex_session_service.dart';
 import '../services/timetable_service.dart';
+import '../widgets/attendance_ring.dart';
 
 /// Public, day-by-day timetable browser for the three FAST ISB schools.
 ///
@@ -67,7 +71,23 @@ class _TimetableScreenState extends State<TimetableScreen> {
   @override
   void initState() {
     super.initState();
+    // Signing into Flex happens on another tab of this same tree, and
+    // the tabs are kept mounted side by side — so this screen never
+    // reloads itself when a session appears. Listening is what lets a
+    // login light the rings up without a pull-to-refresh.
+    FlexSessionService.instance.addSessionListener(_onSessionChanged);
     _bootstrap();
+  }
+
+  @override
+  void dispose() {
+    FlexSessionService.instance.removeSessionListener(_onSessionChanged);
+    super.dispose();
+  }
+
+  void _onSessionChanged() {
+    if (!mounted) return;
+    unawaited(_loadAttendance(force: true));
   }
 
   Future<void> _bootstrap() async {
@@ -136,12 +156,24 @@ class _TimetableScreenState extends State<TimetableScreen> {
       _error = null;
     });
 
+    // Attendance rides along beside the timetable fetch. It needs the
+    // session the WebView adopted, so it only has anything to say once
+    // Flex has been opened at least once — and a portal that is
+    // unreachable, signed out or mid-change must never hold up or spoil
+    // the timetable itself.
+    unawaited(_loadAttendance(force: force));
+
     try {
       final result = await TimetableService.instance.load(
         _school,
         forceRefresh: force,
       );
       if (!mounted) return;
+
+      // Attendance can only be pinned to a section once the sheet is in
+      // hand, so the service is shown the entries before the cards are
+      // built — see [FlexAttendanceService.matchEntry].
+      FlexAttendanceService.instance.setEntries(result.entries);
 
       setState(() {
         _result = result;
@@ -164,6 +196,23 @@ class _TimetableScreenState extends State<TimetableScreen> {
         _error = 'Could not load the timetable.\nCheck your connection.';
       });
     }
+  }
+
+  /// Brings the portal's attendance in alongside the timetable.
+  ///
+  /// The cached figures are painted first so rings appear at once and the
+  /// screen never flashes from "ringed" to "plain" while a refresh runs.
+  /// Both `setState`s are guarded because this carries on after the
+  /// screen may have been left.
+  Future<void> _loadAttendance({bool force = false}) async {
+    final service = FlexAttendanceService.instance;
+    await service.loadCached();
+    if (!mounted) return;
+    setState(() {});
+
+    await service.refresh(force: force);
+    if (!mounted) return;
+    setState(() {});
   }
 
   /// Today's weekday name; Sunday has no timetable so it falls back to
@@ -741,6 +790,11 @@ class _TimetableScreenState extends State<TimetableScreen> {
         ? AppColors.textDark.withValues(alpha: 0.65)
         : Colors.white70;
 
+    // Null when the portal has no matching course, or when the course
+    // isn't in the student's own section — the ring is an extra, so a
+    // missing or half-loaded session just means a plain card.
+    final attendance = FlexAttendanceService.instance.matchEntry(entry);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -810,6 +864,16 @@ class _TimetableScreenState extends State<TimetableScreen> {
               ],
             ),
           ),
+          // Right-hand end of the card: only drawn for a course the
+          // portal could be matched to, so its absence reads as "no
+          // reading", never as a full or empty ring.
+          if (attendance != null) ...[
+            const SizedBox(width: 10),
+            AttendanceRing(
+              percent: attendance.percent,
+              asOf: FlexAttendanceService.instance.fetchedAt,
+            ),
+          ],
         ],
       ),
     );

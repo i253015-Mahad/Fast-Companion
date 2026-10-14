@@ -47,8 +47,29 @@ class FlexSessionService {
   /// The cookie header to replay, as `name=value; name2=value2`.
   String _cookie = '';
 
+  /// Told about the session moving — a sign-in adopted out of the
+  /// WebView, or a sign-out dropping it.
+  ///
+  /// Kept to a plain callback list rather than a notifier because the
+  /// only thing that listens is the timetable, and all it wants to know
+  /// is that attendance may have become fetchable: the tabs share one
+  /// tree and the timetable stays mounted, so it would otherwise have no
+  /// way of hearing that the student has just signed in.
+  final List<VoidCallback> _listeners = [];
+
   /// True once a session cookie is held and can be replayed.
   bool get hasSession => _cookie.isNotEmpty;
+
+  void addSessionListener(VoidCallback listener) => _listeners.add(listener);
+
+  void removeSessionListener(VoidCallback listener) =>
+      _listeners.remove(listener);
+
+  void _notifySessionChanged() {
+    for (final listener in List<VoidCallback>.of(_listeners)) {
+      listener();
+    }
+  }
 
   /// Reads the persisted copy of the cookie.
   ///
@@ -94,6 +115,10 @@ class FlexSessionService {
     if (header == _cookie) return;
     _cookie = header;
     await _persist();
+    // Only on a real change: this runs after every page load, and a
+    // listener that fired every time would fetch attendance behind a
+    // student still sitting on the sign-in page.
+    _notifySessionChanged();
   }
 
   Future<void> _persist() async {
