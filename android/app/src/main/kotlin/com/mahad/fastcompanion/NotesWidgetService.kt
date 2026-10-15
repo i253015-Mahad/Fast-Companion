@@ -226,7 +226,12 @@ private class NotesWidgetFactory(
         val h = (totalMinutes % 1440) / 60
         val m = totalMinutes % 60
         return when {
-            d >= 1 -> "${d}d ${h}h"
+            // The last hour of a multi-day countdown holds no whole hour, so
+            // `h` read 0 and "1d 0h" threw that hour away entirely. The
+            // minutes are still there — show those instead. This has to say
+            // the same thing as formatCountdown() in note_preview.dart, which
+            // the in-app timed-task screen uses for the same task.
+            d >= 1 -> if (h == 0L) "${d}d ${m}m" else "${d}d ${h}h"
             h >= 1 -> "${h}h ${m}m"
             else -> "${m}m"
         }

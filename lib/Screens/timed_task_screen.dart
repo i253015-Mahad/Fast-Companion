@@ -5,6 +5,7 @@ import '../models/note.dart';
 import '../theme/app_colors.dart';
 import '../services/database_service.dart';
 import '../services/local_storage_service.dart';
+import '../services/note_preview.dart';
 import '../widgets/checked_items_header.dart'; // NEW
 
 class TimedTaskScreen extends StatefulWidget {
@@ -252,15 +253,9 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
     if (item.dueDateTime == null && item.remainingDuration == null) {
       return "tap to set date";
     }
-    final difference = _getRemainingDuration(item);
-    if (difference == Duration.zero) return "Time expired";
-    final days = difference.inDays;
-    final hours = difference.inHours;
-    final minutes = difference.inMinutes;
-    if (days >= 1) return "${days}d ${hours % 24}h left";
-    if (hours >= 1) return "${hours}h ${minutes % 60}m left";
-    if (minutes >= 1) return "${minutes}m ${difference.inSeconds % 60}s left";
-    return "${difference.inSeconds}s left";
+    // Shared with the home screen widget, which counts the same task down
+    // alongside it.
+    return formatCountdown(_getRemainingDuration(item));
   }
 
   /// One task row. This is the same ListTile that used to live inline in the
