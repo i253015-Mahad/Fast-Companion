@@ -1,5 +1,6 @@
 // lib/services/home_widget_service.dart
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 import '../models/note.dart';
 
@@ -116,10 +117,54 @@ class HomeWidgetService {
       return true;
     }
     if (a is num && b is num) {
-      if (key == 'remainingMs') return (a - b).abs() < 10000;
+      if (key == 'remainingMs') return (a - b).abs() < _remainingMsTolerance;
       return a == b;
     }
     return a == b;
+  }
+
+  /// How far apart two computed countdowns may be and still count as the same
+  /// moment. The widget freezes a task's remaining time when you tap it; Dart
+  /// recomputes it a moment later, so a difference of a few seconds means
+  /// nothing and [_same] lets the update through rather than resaving it.
+  static const _remainingMsTolerance = 10000;
+
+  /// Returns [fresh] with the countdown the widget is already drawing kept
+  /// intact, so the payload written here differs from the stored one only
+  /// where something really happened.
+  ///
+  /// `remainingMs` is frozen twice: by Kotlin the instant you tap, and by Dart
+  /// a moment later once the save finishes. The two numbers therefore always
+  /// differ by however long that took, while rendering to the very same text.
+  /// Writing the newer one anyway made the row signature disagree with what
+  /// was on screen, the provider read that as a changed row and re-bound a list
+  /// that looked unchanged — the flash a couple of seconds after a tap.
+  ///
+  /// This deliberately has no time window: on a slow device the save can take
+  /// longer than any fixed one, so the rule is instead "keep the widget's
+  /// value unless the due date or the tick state itself changed" — a re-tick or
+  /// an edited due date changes one of those, and then the freshly computed
+  /// value wins.
+  static Object? _adoptStored(Object? stored, Object? fresh) {
+    if (fresh is Map && stored is Map) {
+      final out = <String, dynamic>{};
+      fresh.forEach((k, v) {
+        out[k] = stored.containsKey(k) ? _adoptStored(stored[k], v) : v;
+      });
+      if (out['remainingMs'] is num && stored['remainingMs'] is num) {
+        final sameDue = stored['dueMs'] == out['dueMs'];
+        final sameTick = stored['isDone'] == out['isDone'];
+        if (sameDue && sameTick) out['remainingMs'] = stored['remainingMs'];
+      }
+      return out;
+    }
+    if (fresh is List && stored is List && fresh.length == stored.length) {
+      return [
+        for (var i = 0; i < fresh.length; i++)
+          _adoptStored(stored[i], fresh[i]),
+      ];
+    }
+    return fresh;
   }
 
   // ---------- public API ----------
@@ -152,11 +197,17 @@ class HomeWidgetService {
       if (_same(p, fresh)) continue; // already up to date
       await HomeWidget.saveWidgetData<String>(
         _payloadKey(id),
-        jsonEncode(fresh),
+        // Written as the widget already shows it, so the only difference the
+        // provider sees is the one that actually happened. See [_adoptStored].
+        jsonEncode(_adoptStored(p, fresh)),
       );
       touched.add(id);
     }
     if (touched.isNotEmpty) {
+      // The interesting case only: something about this note differs from what
+      // the widget holds, so a redraw is going out. NotesWidgetProvider logs
+      // whether it re-binds or skips, which is the actual flash decision.
+      debugPrint('🔁 widget refresh: content update for $touched');
       await _requestContentUpdate(touched);
     }
   }

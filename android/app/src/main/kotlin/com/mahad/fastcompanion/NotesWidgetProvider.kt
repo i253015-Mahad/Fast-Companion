@@ -30,9 +30,11 @@ private const val PENDING_TAPS_STALE_MS = 30_000L
  * group.
  *
  * Taps update the widget INSTANTLY (see applyOptimisticTap). That only
- * refreshes the list. Every system update request (onUpdate) always answers
- * with a full redraw, which is the safe thing to do: skipping it made the
- * widget go blank.
+ * refreshes the list. Once the tap settles, both Dart's save and the OS's own
+ * follow-up update request ask for content the widget already has — updateWidget
+ * recognises those and skips the re-inflate, which is what flashed the widget a
+ * second after each tap. A request carrying neither marker still gets a full
+ * redraw, since skipping that is what once made the widget go blank.
  */
 class NotesWidgetProvider : AppWidgetProvider() {
 
@@ -194,6 +196,20 @@ class NotesWidgetProvider : AppWidgetProvider() {
     }
 
     /**
+     * True while a tap has been handed to Dart but not finished yet.
+     *
+     * In that window the widget is not only on screen but freshly painted by
+     * [applyOptimisticTap] a moment ago, so any update request arriving now is
+     * asking for content the widget already has. That is what makes it safe to
+     * answer with a content-only refresh — see [updateWidget].
+     */
+    private fun tapInFlight(prefs: android.content.SharedPreferences): Boolean {
+        val last = (prefs.all[PENDING_TAPS_TIME_KEY] as? Number)?.toLong() ?: return false
+        if (System.currentTimeMillis() - last > PENDING_TAPS_STALE_MS) return false
+        return ((prefs.all[PENDING_TAPS_KEY] as? Number)?.toInt() ?: 0) > 0
+    }
+
+    /**
      * Applies the tap to the widget's stored copy of the note and refreshes
      * just the list, so the number or tick changes the instant you tap. When
      * Dart finishes saving, it writes the real value over this one.
@@ -239,7 +255,18 @@ class NotesWidgetProvider : AppWidgetProvider() {
                     item.put("count", item.optInt("count", 0) + delta)
                 }
 
-                prefs.edit().putString(key, payload.toString()).apply()
+                val newPayloadStr = payload.toString()
+                prefs.edit()
+                    .putString(key, newPayloadStr)
+                    // The rows on screen now ARE this payload, so record them
+                    // beside the ones last drawn. Until they were recorded the
+                    // signature still held the previous full redraw, which made
+                    // Dart's follow-up content update read every tap as a row
+                    // change: it re-bound an unchanged list, and a re-bind
+                    // blanks the list for a frame. That was the flash a couple
+                    // of seconds after pressing + or ticking a box.
+                    .putString(listSigKey(id), listSignature(newPayloadStr))
+                    .apply()
                 manager.notifyAppWidgetViewDataChanged(id, R.id.widget_list)
             } catch (e: Exception) {
                 android.util.Log.e("NotesWidgetProvider", "Optimistic update failed", e)
@@ -259,23 +286,46 @@ class NotesWidgetProvider : AppWidgetProvider() {
             val payloadStr = prefs.getString("payload_$appWidgetId", null)
 
             // ---- flash-free content updates --------------------------------
-            // Dart stamps the broadcasts it sends after saving a tap with a
-            // short-lived flag. When such an update arrives AND the widget's
-            // frame (title/type/render mode) is unchanged, the list rebind
-            // alone shows everything that changed — replacing the whole
-            // RemoteViews is what made the widget flash for a frame after a
-            // tap. If even the list ROWS are unchanged, nothing is redrawn at
-            // all: on some launchers any rebind blanks the list for a frame,
-            // so a pointless rebind is worse than no update. System requests
-            // (boot, launcher restart, first placement) carry no flag, so they
-            // always get the full redraw and the widget can never be blank.
+            // Two kinds of request arrive with content the widget already has,
+            // and both used to answer with a full re-inflate — the flash you
+            // see about a second after pressing + or ticking a box.
+            //
+            //  a) Dart stamps the broadcasts it sends after saving a tap with a
+            //     short-lived flag.
+            //  b) The OS re-sends a bare APPWIDGET_UPDATE ~1.1s after every row
+            //     tap: touching the widget makes the system report our package
+            //     as changed, and AppWidgetService then re-asks every provider
+            //     of that package for its RemoteViews. It carries no flag at
+            //     all, but a tap is provably still in flight when it lands (see
+            //     tapInFlight), so the widget it targets is on screen and was
+            //     painted a moment ago — there is nothing to add.
+            //
+            // Either way, when the widget's frame (title/type/render mode) is
+            // unchanged the list rebind alone shows everything that changed,
+            // and if even the list ROWS are unchanged nothing is redrawn at all:
+            // on some launchers any rebind blanks the list for a frame, so a
+            // pointless rebind is worse than no update.
+            //
+            // A request with neither marker (boot, launcher restart, first
+            // placement) is the case where the launcher may hold no view of us
+            // whatsoever, so it always gets the full redraw and the widget can
+            // never be left blank.
             val isSoft = consumeSoftFlag(prefs, appWidgetId)
-            if (isSoft && payloadStr != null) {
+            val reason = when {
+                isSoft -> "dart"
+                tapInFlight(prefs) -> "tap"
+                else -> null
+            }
+            if (reason != null && payloadStr != null) {
                 val storedSig = prefs.getString(chromeSigKey(appWidgetId), null)
                 if (storedSig != null && storedSig == chromeSignature(payloadStr)) {
                     val newSig = listSignature(payloadStr)
                     val rowsChanged =
                         prefs.getString(listSigKey(appWidgetId), null) != newSig
+                    android.util.Log.d(
+                        "NotesWidgetProvider",
+                        "soft update id=$appWidgetId reason=$reason rowsChanged=$rowsChanged"
+                    )
                     try {
                         val payload = JSONObject(payloadStr)
                         if (payload.optString("type") == "todo" ||
@@ -300,6 +350,15 @@ class NotesWidgetProvider : AppWidgetProvider() {
                 }
             }
 
+            // Reached only when neither marker is present (boot, launcher
+            // restart, first placement — the cases where the launcher may hold
+            // no view at all, so skipping here would leave the widget blank),
+            // or when a flagged update's FRAME really changed. Both cost a full
+            // redraw, which is a visible flash — worth knowing which.
+            android.util.Log.d(
+                "NotesWidgetProvider",
+                "full redraw id=$appWidgetId reason=${reason ?: "system"}"
+            )
             val views = RemoteViews(context.packageName, R.layout.notes_widget_layout)
 
             views.setViewVisibility(R.id.row_text, View.GONE)
