@@ -401,33 +401,140 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
     return Padding(
       padding: const EdgeInsets.all(18),
-      child: Column(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // The header is a stack of rows — title, school pills, up to three
+          // filter rows, day tabs — and every one of them is a fixed height,
+          // so none of it can give way to make room for the next. In portrait
+          // there is space for all of it and nothing has to give. In
+          // landscape the same stack is taller than the whole screen: it
+          // pushed the class list off the bottom and painted the overflow
+          // stripes across the day tabs.
+          //
+          // Capping it here answers that in every orientation at once. A
+          // [ConstrainedBox] around a [SingleChildScrollView] still sizes to
+          // its content whenever the content fits — and a [ConstrainedBox] is
+          // not a flexible child, so it does not claim a share of the column
+          // from the list below. Portrait is therefore untouched; the cap
+          // only takes effect when the header would otherwise claim more than
+          // its share, and then the header scrolls rather than overflows.
+          //
+          // Seventy per cent is the line: the header is a set of controls and
+          // the list is what the screen is for, so the controls never get to
+          // crowd the list out — but in landscape, where the rows stand side
+          // by side, the header is well inside this and is laid out whole.
+          final headerBudget = constraints.maxHeight * 0.7;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: headerBudget),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildHeaderTop(),
+                      _buildFilterBlock(departments, batches, sections),
+                      if (!_loading && _error == null && result != null) ...[
+                        _buildDayTabs(filtered),
+                        const SizedBox(height: 4),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(child: _buildBody(result)),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// The heading and the school pills.
+  ///
+  /// Portrait stacks them, as they have always been. Landscape shares one row
+  /// between them instead: the screen is only a couple of hundred logical
+  /// pixels tall there, and every row the header spends on its own heading is
+  /// a row the class list does not get — enough that the day tabs fell off
+  /// the bottom.
+  Widget _buildHeaderTop() {
+    final landscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
+    if (!landscape) {
+      return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           const Text("Timetable", style: AppTextStyles.title),
           const SizedBox(height: 16),
           _buildSchoolChips(),
           const SizedBox(height: 12),
-          if (departments.isNotEmpty)
-            _filterRow('DEPT', departments, _department, _selectDepartment),
-          if (batches.isNotEmpty)
-            _filterRow('BATCH', batches, _batch, _selectBatch),
-          if (sections.isNotEmpty)
-            _filterRow(
-              'SECTION',
-              sections,
-              _section,
-              _selectSection,
-              displayLabels: _sectionLabels(sections),
-            ),
-          if (!_loading && _error == null && result != null) ...[
-            _buildDayTabs(filtered),
-            const SizedBox(height: 4),
-          ],
-          const SizedBox(height: 8),
-          Expanded(child: _buildBody(result)),
         ],
-      ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            const Text("Timetable", style: AppTextStyles.title),
+            const SizedBox(width: 16),
+            Expanded(child: _buildSchoolChips()),
+          ],
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  /// The DEPT / BATCH / SECTION rows, which exist only for the schools whose
+  /// sheets carry them.
+  ///
+  /// Portrait stacks them: there is height to spare, and each row is a
+  /// horizontal scroll of its own. Landscape has almost no height and a great
+  /// deal of width, so there the rows stand side by side — three rows of
+  /// height bought back for the class list.
+  Widget _buildFilterBlock(
+    List<String> departments,
+    List<String> batches,
+    List<String> sections,
+  ) {
+    final rows = <Widget>[
+      if (departments.isNotEmpty)
+        _filterRow('DEPT', departments, _department, _selectDepartment),
+      if (batches.isNotEmpty)
+        _filterRow('BATCH', batches, _batch, _selectBatch),
+      if (sections.isNotEmpty)
+        _filterRow(
+          'SECTION',
+          sections,
+          _section,
+          _selectSection,
+          displayLabels: _sectionLabels(sections),
+        ),
+    ];
+    if (rows.isEmpty) return const SizedBox.shrink();
+
+    final landscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    if (!landscape || rows.length == 1) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: rows,
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [for (final row in rows) Expanded(child: row)],
     );
   }
 
