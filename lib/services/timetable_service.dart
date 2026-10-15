@@ -117,9 +117,11 @@ class TimetableService {
   /// their program prefix, lab end times that still stopped at the
   /// first of the two periods a lab spans, management lectures that
   /// were being welded together the way labs are, lab end times that
-  /// ran into the period *after* the block, or brackets that the sheets
-  /// left open — a room written `Margala 4 (C-212`) are discarded.
-  static const int _cacheVersion = 9;
+  /// ran into the period *after* the block, brackets that the sheets
+  /// left open — a room written `Margala 4 (C-212` — or a course whose
+  /// code had no space before its name, `LG2009Data Analysis`, and so
+  /// never appeared at all) are discarded.
+  static const int _cacheVersion = 10;
 
   /// The management sheet numbers its batches by odd intake counts
   /// (`01`, `03`, `05`, `07`, with `01` being the newest) rather than by
@@ -1152,8 +1154,15 @@ class TimetableService {
 
     // `AF01A`, `BSBA05C`, `FT07A/B`, `MS`...
     final sectionRe = RegExp(r'^[A-Z]{2,5}\s?\d{0,2}[A-Z]{0,3}(?:/[A-Z]\d?)?$');
-    // `MG4011 Entrepreneurship`, `LG2009Data Analysis for Business -II Lab`
-    final courseRe = RegExp(r'^([A-Z]{2}\s?\d{4})\s+(.*)$');
+    // `MG4011 Entrepreneurship`, `LG2009Data Analysis for Business -II
+    // Lab` — the sheets do not always put a space between the code and
+    // the name, so the gap is optional. Requiring it dropped the whole
+    // cell and the class never appeared at all. A cell can also carry
+    // two codes for a combined session, `SS1022/SS1021 U-Holy Quran`,
+    // and those belong to the code, not the name.
+    final courseRe = RegExp(
+      r'^([A-Z]{2}\s?\d{4}(?:\s*/\s*[A-Z]{2}\s?\d{4})?)\s*(.*)$',
+    );
 
     final entries = <TimetableEntry>[];
     var day = '';
@@ -1225,13 +1234,18 @@ class TimetableService {
         var name = match.group(2)!;
         var hasInlineTime = false;
 
+        // Brackets are usual but not required — a cell is also written
+        // `Psychology 8:30 - 10:20` — so the time is taken either way
+        // and stripped from the name rather than left on display.
         final inline = RegExp(
-          r'\((\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\)',
+          r'\(?(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\)?',
         ).firstMatch(name);
         if (inline != null) {
           start = inline.group(1)!;
           end = inline.group(2)!;
-          name = name.replaceAll(RegExp(r'\(.*?\)'), '').trim();
+          name = name
+              .replaceAll(RegExp(r'\(?\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\)?'), '')
+              .trim();
           // A time typed into the cell is a deliberate one-off (a
           // rescheduled class), so it is never joined to its neighbour.
           hasInlineTime = true;
@@ -1282,8 +1296,17 @@ class TimetableService {
         }
         if (dept == 'MS') continue; // graduate — removed.
 
-        final courseText =
-            '${match.group(1)!.replaceAll(' ', '')} ${name.trim()}'.trim();
+        // A sheet that skips the space usually puts a separator instead:
+        // `AF5007-Advanced Financial Management`. It is dropped rather
+        // than joined with a space, which would read `AF5007 -Advanced`.
+        // Only a separator at the very start goes — the ones inside a
+        // name (`U-Holy Quran-I&II`) are part of it.
+        final displayName = name
+            .trim()
+            .replaceFirst(RegExp(r'^[-–—:;,.]+\s*'), '');
+        final courseText = displayName.isEmpty
+            ? match.group(1)!.replaceAll(' ', '')
+            : '${match.group(1)!.replaceAll(' ', '')} $displayName';
         final isLab =
             kind == 'Labs' ||
             RegExp(r'\blab\b', caseSensitive: false).hasMatch(name);

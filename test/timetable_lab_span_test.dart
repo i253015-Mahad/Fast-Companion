@@ -222,6 +222,74 @@ void main() {
       expect(entries.first.room, 'C-603');
     });
 
+    test('management: a course code with no space before its name', () {
+      // The sheet writes `LG2009Data Analysis for Business -II Lab` with
+      // no space at all, and requiring one dropped the whole cell — the
+      // lab never appeared anywhere on the timetable.
+      List<String> row(int length) => List.filled(length, '');
+
+      final header = row(51);
+      header[2] = 'Room';
+      header[3] = '08:30-09:50';
+      header[11] = '10:00-11:20';
+      header[19] = '11:30-12:50';
+      header[27] = '01:00-02:20';
+      header[35] = '02:25-03:45';
+      header[43] = '03:50-05:10';
+
+      final labRow = row(51);
+      labRow[0] = 'Monday';
+      labRow[1] = 'Labs';
+      labRow[2] = 'KK-I';
+      labRow[19] = 'LG2009Data Analysis for Business -II Lab';
+      labRow[26] = 'AF03A';
+      labRow[27] = 'LG2009Data Analysis for Business -II Lab';
+      labRow[34] = 'AF03A';
+
+      // A separator standing in for the space must not survive as a
+      // stray leading hyphen on the name.
+      final sepRow = row(51);
+      sepRow[1] = 'Classes';
+      sepRow[2] = 'A-01';
+      sepRow[3] = 'AF5007-Advanced Financial Management';
+      sepRow[10] = 'AF05A';
+
+      // Two codes in one cell belong to the code, not the name.
+      final pairRow = row(51);
+      pairRow[1] = 'Classes';
+      pairRow[2] = 'A-02';
+      pairRow[11] = 'SS1022/SS1021 U-Holy Quran-I&II';
+      pairRow[18] = 'AF07A';
+
+      final entries = svc.debugParseManagementCsv(
+        '${_csvRow(header)}\n${_csvRow(labRow)}\n${_csvRow(sepRow)}\n'
+        '${_csvRow(pairRow)}\n',
+      );
+
+      final lab = entries.firstWhere(
+        (e) => e.course.contains('Data Analysis'),
+        orElse: () => fail('glued code not parsed: $entries'),
+      );
+      expect(lab.course, 'LG2009 Data Analysis for Business -II Lab');
+      expect(lab.isLab, isTrue, reason: 'the joined pair is still a lab');
+
+      final separated = entries.firstWhere(
+        (e) => e.course.contains('Advanced Financial'),
+        orElse: () => fail('separator course not parsed: $entries'),
+      );
+      expect(
+        separated.course,
+        'AF5007 Advanced Financial Management',
+        reason: 'the leading separator is dropped, not spaced',
+      );
+
+      final paired = entries.firstWhere(
+        (e) => e.course.contains('Holy Quran'),
+        orElse: () => fail('paired code not parsed: $entries'),
+      );
+      expect(paired.course, 'SS1022/SS1021 U-Holy Quran-I&II');
+    });
+
     test('management: a lab written into two periods becomes one entry', () {
       List<String> row(int length) => List.filled(length, '');
 
