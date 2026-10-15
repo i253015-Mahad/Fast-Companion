@@ -62,7 +62,17 @@ class TimetableResult {
 class SheetCell {
   final String text;
   final String bg; // "#aabbcc", or "" when the cell has no fill.
-  const SheetCell({this.text = '', this.bg = ''});
+
+  /// How many sheet columns the cell was merged across (its colspan).
+  ///
+  /// This is how the sheets say a class runs longer than one period: a
+  /// lecture is one slot wide, and a three-hour lab is drawn as a single
+  /// cell whose colour reaches across two of them. The value lives only
+  /// on the top-left cell, so [span] is the only surviving record of how
+  /// far the colour actually extended.
+  final int span;
+
+  const SheetCell({this.text = '', this.bg = '', this.span = 1});
 }
 
 /// A legend swatch: a colored banner cell that names a program/batch.
@@ -103,9 +113,13 @@ class TimetableService {
 
   /// Bumped whenever the entry shape or parsing changes so stale caches
   /// (missing the color-derived program/batch, management batch codes
-  /// that are now stored as years, or engineering sections folded into
-  /// their program prefix) are discarded.
-  static const int _cacheVersion = 6;
+  /// that are now stored as years, engineering sections folded into
+  /// their program prefix, lab end times that still stopped at the
+  /// first of the two periods a lab spans, management lectures that
+  /// were being welded together the way labs are, lab end times that
+  /// ran into the period *after* the block, or brackets that the sheets
+  /// left open — a room written `Margala 4 (C-212`) are discarded.
+  static const int _cacheVersion = 9;
 
   /// The management sheet numbers its batches by odd intake counts
   /// (`01`, `03`, `05`, `07`, with `01` being the newest) rather than by
@@ -367,7 +381,7 @@ class TimetableService {
           col++;
         }
 
-        _setCell(row, col, SheetCell(text: text, bg: bg));
+        _setCell(row, col, SheetCell(text: text, bg: bg, span: colspan));
 
         // Mark the spanned slots in the rows below as occupied.
         if (rowspan > 1) {
@@ -401,14 +415,41 @@ class TimetableService {
     row[col] = cell;
   }
 
-  static String _stripHtml(String s) => s
-      .replaceAll(RegExp(r'<[^>]+>'), ' ')
-      .replaceAll('&amp;', '&')
-      .replaceAll('&nbsp;', ' ')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
+  static String _stripHtml(String s) => _balanceParens(
+    s
+        .replaceAll(RegExp(r'<[^>]+>'), ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim(),
+  );
+
+  /// Closes brackets the sheets leave open and drops the stray ones.
+  ///
+  /// The sheets are typed by hand and lose them: the computing sheet
+  /// writes a room as `Margala 4 (C-212` with no closing paren, which
+  /// otherwise reaches the card unbalanced, and a management course cell
+  /// is written `(10:00-11:50))`. Text that is already balanced is
+  /// returned untouched, which is the normal case.
+  static String _balanceParens(String s) {
+    var open = 0;
+    final kept = StringBuffer();
+    for (final r in s.split('')) {
+      if (r == '(') {
+        open++;
+      } else if (r == ')') {
+        if (open == 0) continue; // closer with nothing to close
+        open--;
+      }
+      kept.write(r);
+    }
+    for (var i = 0; i < open; i++) {
+      kept.write(')');
+    }
+    return kept.toString();
+  }
 
   static List<String> _texts(List<SheetCell> row) => [
     for (final c in row) c.text,
@@ -536,6 +577,36 @@ class TimetableService {
     r'^\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*$',
   );
 
+  // ---------------------------------------------------------------------
+  // Test hooks. These parsers stay private because only [load] should
+  // drive them; tests hand them saved copies of the real sheets instead
+  // of fetching over the network.
+
+  /// Parses one day's Computing htmlview page.
+  @visibleForTesting
+  List<TimetableEntry> debugParseComputingHtml(String html, String day) =>
+      _parseComputingHtml(html, day);
+
+  /// Parses an Engineering htmlview page (all days at once).
+  @visibleForTesting
+  List<TimetableEntry> debugParseEngineeringHtml(String html) =>
+      _parseEngineeringHtml(html);
+
+  /// Parses the Management gviz CSV (all days at once).
+  @visibleForTesting
+  List<TimetableEntry> debugParseManagementCsv(String csv) =>
+      _parseManagement(csv);
+
+  /// Parses the Computing CSV fallback for one day.
+  @visibleForTesting
+  List<TimetableEntry> debugParseComputingCsv(String csv, String day) =>
+      _parseComputing(csv, day);
+
+  /// Parses the Engineering CSV fallback (all days at once).
+  @visibleForTesting
+  List<TimetableEntry> debugParseEngineeringCsv(String csv) =>
+      _parseEngineering(csv);
+
   /// Computing day-tab grid read from htmlview: the header row holds the
   /// time slots, each data row is a room with one course cell per slot.
   /// Cell colors tag each class with its department/batch; MS/PhD cells
@@ -598,10 +669,24 @@ class TimetableService {
         }
         if (slot < 0) continue;
 
+        // How far the cell's colour reaches. A merged lab block covers
+        // two periods, and that span — not the first slot alone — is
+        // what says how long the class is. It is capped at the next
+        // room's column so a wide cell can't be read as running into
+        // the neighbouring room's half of the row.
+        var spanEndCol = j + row[j].span - 1;
+        for (final rc in roomCols) {
+          if (rc <= j) continue;
+          if (rc - 1 < spanEndCol) spanEndCol = rc - 1;
+          break;
+        }
+
+        // A time written inside the cell itself still wins over the
+        // span, which is how one-off rescheduled classes are recorded.
         final parsed = _parseComputingCell(
           raw,
           timeCols[slot].start,
-          timeCols[slot].end,
+          _spannedEnd(timeCols, slot, spanEndCol),
         );
         final prefix = parsed.section.contains('-')
             ? parsed.section.split('-').first
@@ -693,25 +778,32 @@ class TimetableService {
 
       final isCourseRow = c0.isNotEmpty || c1.isNotEmpty || c2.isNotEmpty;
 
-      for (final t in timeCols) {
+      for (var ti = 0; ti < timeCols.length; ti++) {
+        final t = timeCols[ti];
         final raw = text(t.col);
         if (raw.isEmpty) continue;
         if (_slotRe.hasMatch(raw)) continue;
 
         if (isCourseRow) {
-          final bg = t.col < row.length ? row[t.col].bg : '';
+          final cell = t.col < row.length ? row[t.col] : const SheetCell();
           final parsed = _parseEngineeringCell(raw, kind);
           final prefix = parsed.section.contains('-')
               ? parsed.section.split('-').first
               : '';
-          final color = _resolveColor(legend, bg, prefix);
+          final color = _resolveColor(legend, cell.bg, prefix);
           if (color.drop) continue; // MS / PhD cell — removed.
 
           entries.add(
             TimetableEntry(
               day: day,
               startTime: _normalizeTime(t.start),
-              endTime: _normalizeTime(t.end),
+              // A lab is one cell across two periods (colspan 35 against
+              // a period's 17), so its colour reaching into the period
+              // after this one is what makes it three hours rather than
+              // one.
+              endTime: _normalizeTime(
+                _spannedEnd(timeCols, ti, t.col + cell.span - 1),
+              ),
               course: parsed.course,
               section: parsed.section,
               program: color.dept,
@@ -860,6 +952,22 @@ class TimetableService {
           timeCols[slot].start,
           timeCols[slot].end,
         );
+
+        // The CSV has no colours and no merges: a two-period lab arrives
+        // as a single cell with the period beside it left blank. The
+        // course name is what's left that says it's a lab, and that
+        // blank period is what's left that says it runs past its own
+        // slot — so a lab with a free period after it takes that period
+        // too. Lectures are never extended on this evidence alone,
+        // since a free period after a lecture is simply a free period.
+        var endTime = parsed.end;
+        if (parsed.isLab &&
+            slot + 1 < timeCols.length &&
+            timeCols[slot + 1].col < row.length &&
+            row[timeCols[slot + 1].col].trim().isEmpty) {
+          endTime = _normalizeTime(_blockEnd(timeCols, slot, slot + 1));
+        }
+
         final prefix = parsed.section.contains('-')
             ? parsed.section.split('-').first
             : '';
@@ -867,7 +975,7 @@ class TimetableService {
           TimetableEntry(
             day: day,
             startTime: parsed.start,
-            endTime: parsed.end,
+            endTime: endTime,
             course: parsed.course,
             section: parsed.section,
             program: prefix,
@@ -943,7 +1051,8 @@ class TimetableService {
 
       final isCourseRow = c0.isNotEmpty || c1.isNotEmpty || c2.isNotEmpty;
 
-      for (final t in timeCols) {
+      for (var ti = 0; ti < timeCols.length; ti++) {
+        final t = timeCols[ti];
         final raw = cell(t.col);
         if (raw.isEmpty) continue;
         if (_slotRe.hasMatch(raw)) continue;
@@ -953,11 +1062,24 @@ class TimetableService {
           final prefix = parsed.section.contains('-')
               ? parsed.section.split('-').first
               : '';
+
+          // The export CSV has no merges to read, so a lab's two-period
+          // block arrives as one cell with the period after it blank.
+          // The Classes/Labs column still says it's a lab, so that blank
+          // period beside it is enough to claim the second one too.
+          var endTime = _normalizeTime(t.end);
+          if (parsed.isLab &&
+              ti + 1 < timeCols.length &&
+              timeCols[ti + 1].col < row.length &&
+              cell(timeCols[ti + 1].col).isEmpty) {
+            endTime = _normalizeTime(_blockEnd(timeCols, ti, ti + 1));
+          }
+
           entries.add(
             TimetableEntry(
               day: day,
               startTime: _normalizeTime(t.start),
-              endTime: _normalizeTime(t.end),
+              endTime: endTime,
               course: parsed.course,
               section: parsed.section,
               program: prefix,
@@ -1079,6 +1201,15 @@ class TimetableService {
         cells.add((col: j, text: text));
       }
 
+      // Management draws a two-period lab by writing the same course and
+      // section into the period and the one after it. Remembering the
+      // entry just made lets that pair be read as the single three-hour
+      // block it is, instead of two short classes back to back.
+      var lastEntryIndex = -1;
+      var lastSlot = -1;
+      var lastHadInlineTime = false;
+      var lastRawSection = '';
+
       for (var k = 0; k < cells.length; k++) {
         final match = courseRe.firstMatch(cells[k].text);
         if (match == null) continue;
@@ -1092,6 +1223,7 @@ class TimetableService {
         var start = timeCols[slot].start;
         var end = timeCols[slot].end;
         var name = match.group(2)!;
+        var hasInlineTime = false;
 
         final inline = RegExp(
           r'\((\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\)',
@@ -1100,14 +1232,32 @@ class TimetableService {
           start = inline.group(1)!;
           end = inline.group(2)!;
           name = name.replaceAll(RegExp(r'\(.*?\)'), '').trim();
+          // A time typed into the cell is a deliberate one-off (a
+          // rescheduled class), so it is never joined to its neighbour.
+          hasInlineTime = true;
         }
 
+        // The section code sits at the far end of the same period as its
+        // course. It is kept exactly as written as well as parsed:
+        // codes like `BBA01A2` carry a group digit the section grammar
+        // doesn't model, but two cells writing the same code are still
+        // unarguably the same section — while a cell belonging to the
+        // *next* period, or no cell at all, is not a section to compare.
         var section = '';
+        var rawSection = '';
         if (k + 1 < cells.length) {
           final next = cells[k + 1];
-          if (sectionRe.hasMatch(next.text)) {
-            section = _padManagementIntake(next.text.replaceAll(' ', ''));
-            k++; // consume it so it isn't mistaken for a course
+          final periodEnd = slot + 1 < timeCols.length
+              ? timeCols[slot + 1].col - 1
+              : timeCols[slot].col +
+                    (timeCols[slot].col - timeCols[slot - 1].col) -
+                    1;
+          if (next.col <= periodEnd) {
+            rawSection = next.text;
+            if (sectionRe.hasMatch(next.text)) {
+              section = _padManagementIntake(next.text.replaceAll(' ', ''));
+              k++; // consume it so it isn't mistaken for a course
+            }
           }
         }
 
@@ -1132,20 +1282,68 @@ class TimetableService {
         }
         if (dept == 'MS') continue; // graduate — removed.
 
+        final courseText =
+            '${match.group(1)!.replaceAll(' ', '')} ${name.trim()}'.trim();
+        final isLab =
+            kind == 'Labs' ||
+            RegExp(r'\blab\b', caseSensitive: false).hasMatch(name);
+
+        // The second half of a two-period lab: same course, the same
+        // section written the same way, and the very next period — the
+        // sheet wrote the lab out twice, so both periods are its own.
+        // Stretch the entry already made over it rather than listing the
+        // lab twice. An absent section blocks the join: with nothing to
+        // tell two neighbouring cells apart, assuming they match would
+        // weld unrelated groups together.
+        //
+        // Only labs join. Management has no merged cells to read — it
+        // writes one cell per period — so a repeated pair of cells for
+        // any other course is equally read as two back-to-back sessions,
+        // and those are listed as the sheet drew them.
+        if (isLab &&
+            lastEntryIndex >= 0 &&
+            !hasInlineTime &&
+            !lastHadInlineTime &&
+            slot == lastSlot + 1 &&
+            entries[lastEntryIndex].course == courseText &&
+            rawSection.isNotEmpty &&
+            rawSection == lastRawSection) {
+          final prev = entries[lastEntryIndex];
+          entries[lastEntryIndex] = TimetableEntry(
+            day: prev.day,
+            startTime: prev.startTime,
+            endTime: _normalizeTime(_blockEnd(timeCols, lastSlot, slot)),
+            course: prev.course,
+            section: prev.section,
+            program: prev.program,
+            batch: prev.batch,
+            room: prev.room,
+            isLab: prev.isLab,
+          );
+          // Step forward so a third period in a row extends it again
+          // rather than starting a fresh entry.
+          lastSlot = slot;
+          lastHadInlineTime = hasInlineTime;
+          lastRawSection = rawSection;
+          continue;
+        }
+
+        lastEntryIndex = entries.length;
+        lastSlot = slot;
+        lastHadInlineTime = hasInlineTime;
+        lastRawSection = rawSection;
+
         entries.add(
           TimetableEntry(
             day: day,
             startTime: _normalizeTime(start),
             endTime: _normalizeTime(end),
-            course: '${match.group(1)!.replaceAll(' ', '')} ${name.trim()}'
-                .trim(),
+            course: courseText,
             section: section,
             program: dept,
             batch: batch,
             room: room,
-            isLab:
-                kind == 'Labs' ||
-                RegExp(r'\blab\b', caseSensitive: false).hasMatch(name),
+            isLab: isLab,
           ),
         );
       }
@@ -1367,6 +1565,66 @@ class TimetableService {
     return found;
   }
 
+  /// When a cell's colour reaches past its own time slot, when does the
+  /// class actually end?
+  ///
+  /// [ownSlot] is the period the cell starts in, and [spanEndCol] is the
+  /// last sheet column the cell's merged colour covers. The sheets draw
+  /// a three-hour lab as one cell across two slots — Computing's COAL
+  /// Lab sits at column 11 with colspan 9, covering the 11:30-12:50 and
+  /// 01:00-02:20 periods — and reading only the first of those is what
+  /// made every lab look like a single 1h20m lecture.
+  ///
+  /// A period only counts as occupied when the cell covers it *whole*.
+  /// Merely reaching into the next one means the cell was drawn that way
+  /// for spacing, not length — an `FSM` block five columns wide brushes
+  /// a single column of the period beside it and must not be read as
+  /// running for three hours.
+  static String _spannedEnd(
+    List<({int col, String start, String end})> timeCols,
+    int ownSlot,
+    int spanEndCol,
+  ) {
+    var last = ownSlot;
+    for (var k = ownSlot + 1; k < timeCols.length; k++) {
+      if (spanEndCol < _slotLastCol(timeCols, k)) break;
+      last = k;
+    }
+    return _blockEnd(timeCols, ownSlot, last);
+  }
+
+  /// Where a block that occupies [ownSlot] through [lastSlot] ends.
+  ///
+  /// A block runs until the last period it covers *finishes*, which is how
+  /// the labs are actually timetabled: 11:30 and 01:00 come out as
+  /// 11:30-02:20, not 11:30-02:30 — the sheet's coloured block stops at
+  /// the end of the second period, it does not run into the next one. A
+  /// block one period long returns its own period's end, so ordinary
+  /// lectures are unaffected.
+  static String _blockEnd(
+    List<({int col, String start, String end})> timeCols,
+    int ownSlot,
+    int lastSlot,
+  ) => timeCols[lastSlot].end;
+
+  /// The last sheet column period [k] occupies.
+  ///
+  /// A period label is followed by one spacer column — the break between
+  /// classes — so the period ends two columns before the next label.
+  static int _slotLastCol(
+    List<({int col, String start, String end})> timeCols,
+    int k,
+  ) {
+    if (k + 1 < timeCols.length) return timeCols[k + 1].col - 2;
+    if (k > 0) {
+      // The final label has no successor; keep the spacing of the one
+      // before it.
+      return timeCols[k].col + (_slotLastCol(timeCols, k - 1) -
+          timeCols[k - 1].col);
+    }
+    return timeCols[k].col;
+  }
+
   // ================= CSV =================
 
   /// Minimal RFC-4180 CSV reader (quotes, doubled quotes, embedded
@@ -1407,6 +1665,14 @@ class TimetableService {
     if (field.isNotEmpty || row.isNotEmpty) {
       row.add(field.toString());
       rows.add(row);
+    }
+    // The sheets lose brackets as often in CSV as in HTML — a course is
+    // written `(10:00-11:50))` and a room with no closing paren — so
+    // every field is repaired the same way the HTML cells are.
+    for (final r in rows) {
+      for (var i = 0; i < r.length; i++) {
+        r[i] = _balanceParens(r[i]);
+      }
     }
     return rows;
   }
