@@ -122,6 +122,14 @@ class NoteCard extends StatelessWidget {
                       : AppTextStyles.cardBody.color,
                   decoration: item.isDone ? TextDecoration.lineThrough : null,
                 ),
+                // A card's height comes from the grid's aspect ratio, so the
+                // preview has a fixed budget and cannot grow to meet its
+                // content. Letting these wrap meant a long task — or three
+                // tasks that each broke onto a second line — ran the preview
+                // past the bottom of the card and drew the overflow stripes
+                // over it. A preview shows one line and trails off.
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 softWrap: true,
               ),
             ),
@@ -152,6 +160,9 @@ class NoteCard extends StatelessWidget {
                 child: Text(
                   item.label,
                   style: AppTextStyles.cardBody,
+                  // Same fixed budget as the checklist preview above.
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   softWrap: true,
                 ),
               ),
