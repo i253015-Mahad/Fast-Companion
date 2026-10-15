@@ -330,74 +330,115 @@ class _FlexScreenState extends State<FlexScreen> {
   /// ever offered anything.
   ///
   /// So the form is described in the terms the framework wants. The
-  /// roll number box is found the way Chrome would find it — the text
-  /// field sitting in the same form as the password box — rather than by
-  /// a name or id, which the portal is free to rename. Nothing is typed,
-  /// stored or sent anywhere: this only adds an attribute.
+  /// roll number box is found the way a browser finds it — the text
+  /// field that comes before the password box — rather than by a name or
+  /// an id, which the portal is free to rename, and rather than by a
+  /// shared `<form>`, which the portal is equally free not to use.
   ///
   /// The form does not exist when this script first runs, so the work is
-  /// done by an observer rather than once at start-up: every element the
-  /// portal adds is checked, and the tags are set as soon as the fields
-  /// appear.
+  /// done by an observer rather than once at start-up.
+  ///
+  /// The observer rescans the *whole* document rather than only what just
+  /// arrived. The HTML parser adds elements one at a time, so the roll
+  /// number box and the password box arrive in separate callbacks — and
+  /// a scan limited to the new subtree sees one of them without the
+  /// other, which is exactly the pairing this exists to make.
+  ///
+  /// Tagging the field is not on its own enough. The portal also binds
+  /// Inputmask to the roll number box, and the mask hides the field from
+  /// the autofill framework: with the mask attached the system has
+  /// nothing to offer, and the moment the mask is dropped the saved roll
+  /// number is offered. So the mask is dropped. It only inserts the
+  /// hyphen the saved value already carries, and the field keeps the
+  /// example in its placeholder, so nothing is lost but the obstacle.
   static const String _autofillScript = '''
 (function () {
   if (window.__fcAutofillApplied) return;
   window.__fcAutofillApplied = true;
 
-  function label(form) {
+  // Detach a mask the portal may have bound to this field, and clear
+  // what the mask leaves in it. Checked on every pass and on focus,
+  // because the portal installs the mask after this script has already
+  // seen the element.
+  function unmask(el) {
     try {
-      var passwords = form.querySelectorAll('input[type="password"]');
-      for (var i = 0; i < passwords.length; i++) {
-        passwords[i].setAttribute('autocomplete', 'current-password');
-      }
-      if (!passwords.length) return;
+      if (!el || !el.inputmask || !el.inputmask.remove) return;
+      el.inputmask.remove();
+      // The mask writes its separator into the field as soon as the
+      // field is focused, so an untouched roll number is not empty any
+      // more — and an offer is only made into an empty field. That is
+      // why the offer stayed away even once the mask itself was gone.
+      // A field holding nothing but separators is the mask talking, not
+      // the user, and is cleared.
+      if (!/[A-Za-z0-9]/.test(el.value || '')) el.value = '';
+    } catch (e) {
+      // A portal change must never take the page down over this.
+    }
+  }
 
-      var fields = form.querySelectorAll(
-        'input[type="text"], input[type="tel"], input[type="number"], input:not([type])'
-      );
-      for (var j = 0; j < fields.length; j++) {
-        var field = fields[j];
-        // A token the portal chose ("email", "one-time-code") is kept: it
-        // describes the field better than this guess does. "off" is not —
-        // it is the portal declining autofill, and it is exactly the
-        // reason the roll number never got offered.
-        var existing = (field.getAttribute('autocomplete') || '').toLowerCase();
-        if (existing && existing !== 'off' && existing !== 'on') continue;
-        field.setAttribute('autocomplete', 'username');
+  // Walk the inputs in document order. Everything the system can treat
+  // as a username is remembered, and the one that counts is the last
+  // such field before a password box — which is the roll number, however
+  // the portal has chosen to group the fields.
+  function label() {
+    try {
+      var inputs = document.querySelectorAll('input');
+      var lastText = null;
+      for (var i = 0; i < inputs.length; i++) {
+        var el = inputs[i];
+        var type = (el.getAttribute('type') || 'text').toLowerCase();
+
+        if (type === 'password') {
+          el.setAttribute('autocomplete', 'current-password');
+          if (!lastText) continue;
+          // A token the portal chose ("email", "one-time-code") is kept:
+          // it describes the field better than this guess does. "off" is
+          // not — it is the portal declining autofill, and it is exactly
+          // the reason the roll number was never offered.
+          var existing =
+            (lastText.getAttribute('autocomplete') || '').toLowerCase();
+          if (existing && existing !== 'off' && existing !== 'on') continue;
+          lastText.setAttribute('autocomplete', 'username');
+          unmask(lastText);
+        } else if (
+          type === 'text' ||
+          type === 'tel' ||
+          type === 'number' ||
+          type === 'email'
+        ) {
+          lastText = el;
+        }
       }
     } catch (e) {
       // A portal change must never take the page down over this.
     }
   }
 
-  function scan(node) {
-    if (!node || node.nodeType !== 1) return;
-    if (node.tagName === 'FORM') label(node);
-    // The password box is often added to a form built earlier, so the
-    // form is looked for from the field too, not only from its parent.
-    var passwords = node.querySelectorAll
-      ? node.querySelectorAll('input[type="password"]')
-      : [];
-    for (var i = 0; i < passwords.length; i++) {
-      label(passwords[i].form || passwords[i].parentNode);
-    }
-    if (node.tagName === 'INPUT' && node.type === 'password') {
-      label(node.form || node.parentNode);
-    }
+  // The mask is removed the moment the field is focused as well, ahead
+  // of the portal's own focus handling, so that autofill meets a plain
+  // field rather than a masked one.
+  try {
+    document.addEventListener('focusin', function (ev) {
+      unmask(ev.target);
+    }, true);
+  } catch (e) {
+    // A portal change must never take the page down over this.
   }
 
   function boot() {
-    var root = document.body || document.documentElement;
+    var root = document.documentElement;
     if (!root) { setTimeout(boot, 10); return; }
 
-    scan(root);
+    label();
+    // The mask is bound on the portal's own schedule, so the field is
+    // swept again a few times before the user can reach it.
+    setTimeout(label, 300);
+    setTimeout(label, 1200);
     try {
-      new MutationObserver(function (changes) {
-        for (var i = 0; i < changes.length; i++) {
-          var added = changes[i].addedNodes;
-          for (var j = 0; j < added.length; j++) scan(added[j]);
-        }
-      }).observe(root, { childList: true, subtree: true });
+      new MutationObserver(function () { label(); }).observe(root, {
+        childList: true,
+        subtree: true,
+      });
     } catch (e) {
       // A portal change must never take the page down over this.
     }
