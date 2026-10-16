@@ -163,4 +163,28 @@ void main() {
       reason: 'the body is not part of the row signature, so it should update',
     );
   });
+
+  // A widget's RemoteViews live only inside the launcher, and replacing the
+  // APK makes it drop them and fall back to the layout's "no notes pinned"
+  // default. Both of these requests can arrive exactly then, so neither is
+  // allowed to be answered by comparing against our own stored signatures.
+  test('pinning always asks the provider to draw, never to skip', () async {
+    final pinned = noteAfterSave(
+      remainingMs: frozenAt(tappedAt),
+      body: 'preview after',
+    );
+    seed(payloadOnWidget(remainingMs: frozenAt(tappedAt), body: 'preview before'));
+
+    await HomeWidgetService.pinNote(7, uid, pinned);
+
+    expect(broadcasts, 1, reason: 'pinning has to reach the provider');
+    expect(
+      store['soft_update_7'],
+      isNull,
+      reason:
+          'flagging the pinned widget as content-only lets the provider decide '
+          'the frame is unchanged and draw nothing — which is how the widget '
+          'got stuck on "no notes pinned"',
+    );
+  });
 }

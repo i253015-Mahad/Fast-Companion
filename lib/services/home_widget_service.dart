@@ -180,9 +180,14 @@ class HomeWidgetService {
       ids.add(widgetId);
       await _saveIds(ids);
     }
-    // Marked as content-only: if the pinned note's frame (title/type) is
-    // unchanged the provider rebinds the list without a flashing redraw.
-    await _requestContentUpdate([widgetId]);
+    // This widget is deliberately NOT flagged as a content-only update.
+    // Pinning is the one request that may arrive when the launcher is holding
+    // nothing of ours at all (fresh placement, or an APK replacement), and
+    // flagging it used to make the provider compare against its own stored
+    // signatures and skip — so pinning the note that was already pinned drew
+    // nothing, and the widget stayed on its "no notes pinned" default. Only
+    // the other widgets are flagged, so they are left alone.
+    await _requestContentUpdate(ids.where((id) => id != widgetId).toList());
   }
 
   /// Rewrites every widget currently showing this exact note. Used by the
