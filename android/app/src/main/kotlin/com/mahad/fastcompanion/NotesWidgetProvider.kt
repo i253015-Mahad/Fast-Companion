@@ -519,25 +519,38 @@ class NotesWidgetProvider : AppWidgetProvider() {
             // — the timers are re-armed only because an app update or a
             // force-stop silently clears every alarm we had scheduled.
             if (!force && isVerify && !stale) {
-                android.util.Log.d("NotesWidgetProvider", "verify ok id=$appWidgetId")
+                android.util.Log.i("NotesWidgetProvider", "verify ok id=$appWidgetId")
                 reschedule(context, appWidgetId, payloadStr)
                 return
             }
 
-            val reason = when {
-                isSoft -> "dart"
-                tapInFlight(prefs) -> "tap"
-                else -> null
-            }
-            if (!force && reason != null && payloadStr != null && !stale) {
+            // A soft update is Dart telling us it saved content the widget
+            // already shows, so the frame is unchanged and a full redraw would
+            // only flash. Skipping that is right.
+            //
+            // A BARE update with a tap in flight is a different animal, and
+            // skipping it is what stranded the widget. Measured on this
+            // device: the launcher throws our RemoteViews away ~920ms after a
+            // row tap (re-inflating the layout defaults, so the widget reads
+            // its placeholder), and the OS re-asks us for the views 5-8ms
+            // LATER. That re-send is therefore not "nothing to add" — it is
+            // the one moment we are handed the chance to put the note back,
+            // and answering it with a skip is what left the widget blank until
+            // something unrelated redrew it. So a tap-marked bare update always
+            // gets the redraw.
+            //
+            // This is not the flash this work set out to remove: by the time
+            // it arrives the launcher is already showing the defaults, so the
+            // redraw restores the note rather than re-inflating one that was
+            // still on screen.
+            if (!force && isSoft && payloadStr != null && !stale) {
                 val storedSig = prefs.getString(chromeSigKey(appWidgetId), null)
                 if (storedSig != null && storedSig == chromeSignature(payloadStr)) {
                     val newSig = listSignature(payloadStr)
                     val rowsChanged =
                         prefs.getString(listSigKey(appWidgetId), null) != newSig
-                    android.util.Log.d(
-                        "NotesWidgetProvider",
-                        "soft update id=$appWidgetId reason=$reason rowsChanged=$rowsChanged"
+                    android.util.Log.i("NotesWidgetProvider",
+                        "soft update id=$appWidgetId rowsChanged=$rowsChanged"
                     )
                     reschedule(context, appWidgetId, payloadStr)
                     if (rowsChanged) {
@@ -553,15 +566,14 @@ class NotesWidgetProvider : AppWidgetProvider() {
                 }
             }
 
-            // Reached only when neither marker is present (boot, launcher
+            // Reached when the frame really changed, when our APK was replaced
+            // under the launcher, when neither marker is present (boot, launcher
             // restart, first placement — the cases where the launcher may hold
-            // no view at all, so skipping here would leave the widget blank),
-            // when a flagged update's FRAME really changed, or when our APK was
-            // replaced under the launcher. All cost a full redraw, which is a
-            // visible flash — worth knowing which.
-            android.util.Log.d(
-                "NotesWidgetProvider",
-                "full redraw id=$appWidgetId reason=${reason ?: "system"} stale=$stale"
+            // no view at all), and when a bare update lands with a tap in
+            // flight. That last one is a repair, not a flash: the launcher has
+            // already dropped the views by then.
+            android.util.Log.i("NotesWidgetProvider",
+                "full redraw id=$appWidgetId soft=$isSoft verify=$isVerify stale=$stale"
             )
             val views = RemoteViews(context.packageName, R.layout.notes_widget_layout)
 
