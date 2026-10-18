@@ -92,6 +92,14 @@
             </intent-filter>
         </receiver>
 
+        <!-- Our hand-off for widget taps, reached by explicit component so it
+             needs no intent-filter. Separate from the plugin's receiver
+             because that one schedules a WorkManager job, and the launcher
+             rebuilds both widgets whenever we do (see WidgetTapDispatcher). -->
+        <receiver
+            android:name="com.mahad.fastcompanion.WidgetTapReceiver"
+            android:exported="false" />
+
         <!-- flutter_local_notifications: fires scheduled reminders and
              restores them after reboot / package update. -->
         <receiver

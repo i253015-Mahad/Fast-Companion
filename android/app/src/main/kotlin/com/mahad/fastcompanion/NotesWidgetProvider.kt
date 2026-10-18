@@ -11,7 +11,6 @@ import android.net.Uri
 import android.os.Build
 import android.view.View
 import android.widget.RemoteViews
-import es.antonborri.home_widget.HomeWidgetBackgroundIntent
 import es.antonborri.home_widget.HomeWidgetPlugin
 import org.json.JSONObject
 
@@ -203,10 +202,15 @@ class NotesWidgetProvider : AppWidgetProvider() {
             applyOptimisticTap(context, uri)
             // 2) remember that Dart still owes us a result
             markTapPending(context)
-            // 3) do the real work (Firebase etc.) in the background
+            // 3) do the real work (Firebase etc.) in the background.
+            // Sent to OUR receiver rather than the plugin's, so the tap never
+            // schedules a WorkManager job — scheduling one is what makes the
+            // launcher rebuild both widgets a second later, which is where the
+            // blank widget, the flash and the scroll reset all come from.
             try {
-                HomeWidgetBackgroundIntent.getBroadcast(context, uri).send()
-            } catch (e: PendingIntent.CanceledException) {
+                val handoff = Intent(context, WidgetTapReceiver::class.java).setData(uri)
+                context.sendBroadcast(handoff)
+            } catch (e: Exception) {
                 android.util.Log.e("NotesWidgetProvider", "Could not forward widget tap", e)
             }
         }
