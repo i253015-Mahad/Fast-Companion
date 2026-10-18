@@ -21,11 +21,38 @@ class HomeWidgetService {
   /// SOFT_UPDATE_PREFIX in NotesWidgetProvider.kt.
   static const _kSoftUpdatePrefix = 'soft_update_';
 
+  /// Stamped on every widget we know about once per app launch, asking the
+  /// provider to check whether the launcher still holds our views at all. The
+  /// provider answers with a full redraw ONLY when it can prove it doesn't
+  /// (our APK was replaced), so in the normal case this draws nothing. Must
+  /// match VERIFY_PREFIX in NotesWidgetProvider.kt.
+  static const _kVerifyPrefix = 'verify_';
+
   /// Flags [ids] as content-only updates, then triggers the broadcast.
   static Future<void> _requestContentUpdate(List<int> ids) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     for (final id in ids) {
       await HomeWidget.saveWidgetData<int>('$_kSoftUpdatePrefix$id', now);
+    }
+    await HomeWidget.updateWidget(androidName: _androidWidgetName);
+  }
+
+  /// Repairs widgets whose views the launcher has thrown away.
+  ///
+  /// RemoteViews live only inside the launcher, and replacing this app's APK
+  /// (every `flutter install`, every store update) makes it drop ours and fall
+  /// back to the layout's defaults — the widget then sits there reading its
+  /// placeholder although the note is still pinned. Nothing else in the app
+  /// would fix that, because every content path skips a widget whose stored
+  /// signatures already match, and signatures say nothing about what the
+  /// launcher is actually holding. Safe to call every launch: the provider
+  /// only redraws when there is really something to repair.
+  static Future<void> ensureWidgetsDrawn() async {
+    final ids = await widgetIds();
+    if (ids.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final id in ids) {
+      await HomeWidget.saveWidgetData<int>('$_kVerifyPrefix$id', now);
     }
     await HomeWidget.updateWidget(androidName: _androidWidgetName);
   }

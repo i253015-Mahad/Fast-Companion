@@ -23,12 +23,18 @@
             android:layout_height="32dp"
             android:visibility="invisible" />
 
+        <!-- The text a launcher shows before it has been given any RemoteViews
+             at all: freshly placed, after an APK update, or on the models that
+             drop a widget's views when the provider package changes. It is
+             only ever a placeholder, so it must not be able to read as data
+             loss — the note is still pinned behind it, and the provider
+             repaints on its own shortly after (see NotesWidgetProvider). -->
         <TextView
             android:id="@+id/widget_title"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="no notes pinned"
+            android:text="Fast Companion"
             android:textColor= "@color/widget_text"
             android:textSize="22sp"
             android:textStyle="bold"

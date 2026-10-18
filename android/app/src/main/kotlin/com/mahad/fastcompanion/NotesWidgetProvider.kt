@@ -9,6 +9,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.Message
 import android.view.View
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetBackgroundIntent
@@ -41,6 +44,41 @@ class NotesWidgetProvider : AppWidgetProvider() {
     companion object {
         // Every tap on a list row comes here first (see attachList).
         const val ACTION_ITEM_CLICK = "com.mahad.fastcompanion.ACTION_ITEM_CLICK"
+
+        // The probe on its own, outside the tap path: ask whether the launcher
+        // still holds this widget's views and repair it if not. Useful by hand —
+        // `adb shell am broadcast -a com.mahad.fastcompanion.ACTION_REPAINT
+        // --ei android.appwidget.extra.AppWidgetId 82` — and harmless, since
+        // it only redraws when the answer says a redraw is owed.
+        const val ACTION_REPAINT = "com.mahad.fastcompanion.ACTION_REPAINT"
+
+        // The launcher can throw a widget's RemoteViews away when the provider
+        // package is touched — this one does it ~450ms after some taps that
+        // run Dart — and re-inflates the layout defaults in their place. The
+        // widget then reads its placeholder although the note is still pinned,
+        // and nothing in the system tells us: our stored signatures still say
+        // the widget is up to date, which is exactly why every later skip used
+        // to leave it stranded. See the probe in scheduleRepaint.
+        //
+        // Deliberately a Handler and not an AlarmManager alarm. Alarms for a
+        // cached app are inexact, and one of those landed four seconds late on
+        // the very device this bug was found on — four seconds of blank widget
+        // where there used to be a permanently blank one. A tap always leaves
+        // this process running for a good while afterwards (the WorkManager job
+        // that boots Dart and saves takes seconds), so a posted message simply
+        // arrives, on time.
+
+        // How long after the tap the probe goes out. The drop is a fraction of
+        // a second behind the tap — measured at 440-470ms on this device — so
+        // this lands just after it. Before the drop the probe would prove
+        // nothing, because the launcher services the tap's own rebind a moment
+        // earlier.
+        private const val REPAINT_DELAY_MS = 700L
+
+        // How long the probe gets to come back before we conclude it won't.
+        // Generous on purpose: mistaking a slow launcher for a dropping one
+        // costs a redraw the widget did not need, and that redraw is a flash.
+        private const val REPAINT_SETTLE_MS = 600L
 
         // The widget's own refresh tick. Countdowns are plain text recomputed
         // at every rebind (a launcher-ticked Chronometer freezes at random
@@ -76,6 +114,25 @@ class NotesWidgetProvider : AppWidgetProvider() {
         // needed — on some launchers ANY rebind blanks the list for a frame
         // (visible as a flash), so pointless rebinds are skipped entirely.
         private fun listSigKey(appWidgetId: Int) = "list_sig_$appWidgetId"
+
+        // Dart stamps these once per app launch (see ensureWidgetsDrawn in
+        // home_widget_service.dart). They mean "check whether the launcher
+        // still holds our views"; the provider only repaints when that's
+        // provably not the case, so an ordinary launch draws nothing.
+        private const val VERIFY_PREFIX = "verify_"
+        private const val VERIFY_UPDATE_VALID_MS = 60_000L
+        private fun verifyKey(appWidgetId: Int) = "$VERIFY_PREFIX$appWidgetId"
+
+        // RemoteViews live ONLY inside the launcher — nothing on our side
+        // keeps them alive. Replacing this app's APK (which is what every
+        // `flutter install` does, and what every store update does) makes the
+        // launcher drop ours and fall back to the layout's defaults, i.e. the
+        // widget sits there showing "no notes pinned" although the note is
+        // still pinned. The signatures stored above then claim it is already
+        // up to date, so every later SKIP is what keeps it blank. Recording
+        // the build we last drew under is the one thing that lets us tell a
+        // skip that is safe from one that strands the widget.
+        private fun drawnBuildKey(appWidgetId: Int) = "drawn_build_$appWidgetId"
     }
 
     override fun onUpdate(
@@ -84,7 +141,20 @@ class NotesWidgetProvider : AppWidgetProvider() {
         appWidgetIds: IntArray
     ) {
         for (widgetId in appWidgetIds) {
-            updateWidget(context, appWidgetManager, widgetId)
+            // Safety net for the probe below. A probe that never ran — the
+            // process dying in the sub-second window before its Handler fired
+            // — leaves its marker set, and this is the first provider
+            // broadcast afterwards. The marker only ever holds while a probe's
+            // answer is outstanding, so repairing on it can never be a redraw
+            // the widget did not need.
+            if (unmetProbe(HomeWidgetPlugin.getData(context), widgetId)) {
+                android.util.Log.i(
+                    "NotesWidgetProvider", "unfinished probe id=$widgetId, repairing"
+                )
+                repairWidget(context, appWidgetManager, widgetId)
+            } else {
+                updateWidget(context, appWidgetManager, widgetId)
+            }
         }
     }
 
@@ -97,9 +167,14 @@ class NotesWidgetProvider : AppWidgetProvider() {
             editor.remove(chromeSigKey(id))
             editor.remove(listSigKey(id))
             editor.remove(softUpdateKey(id))
+            editor.remove(verifyKey(id))
+            editor.remove(drawnBuildKey(id))
             editor.remove("sig_$id") // left over from the earlier shortcut version
+            editor.remove(pendingRebindsKey(id))
+            editor.remove(rowsRequestedKey(id))
             cancelExpiryRefresh(context, id)
             cancelNextTick(context, id)
+            cancelRepaint(id)
         }
         editor.apply()
     }
@@ -128,6 +203,16 @@ class NotesWidgetProvider : AppWidgetProvider() {
                 }
             }
 
+            ACTION_REPAINT -> {
+                val widgetId = intent.getIntExtra(
+                    AppWidgetManager.EXTRA_APPWIDGET_ID,
+                    AppWidgetManager.INVALID_APPWIDGET_ID
+                )
+                if (widgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                    probeViews(context, widgetId)
+                }
+            }
+
             else -> super.onReceive(context, intent)
         }
     }
@@ -139,14 +224,103 @@ class NotesWidgetProvider : AppWidgetProvider() {
      * position.
      */
     private fun handleTick(context: Context, appWidgetId: Int) {
-        AppWidgetManager.getInstance(context)
-            .notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list)
-        val raw = HomeWidgetPlugin.getData(context).getString("payload_$appWidgetId", null)
+        val prefs = HomeWidgetPlugin.getData(context)
+        val manager = AppWidgetManager.getInstance(context)
+        // A rebind paints into views the launcher may have thrown away (see
+        // drawnBuildKey); when that's possible, only a full redraw shows
+        // anything at all.
+        if (viewsAreStale(context, prefs, appWidgetId)) {
+            updateWidget(context, manager, appWidgetId)
+            return
+        }
+        manager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list)
+        val raw = prefs.getString("payload_$appWidgetId", null)
         if (raw.isNullOrEmpty()) {
             cancelNextTick(context, appWidgetId)
             return
         }
         scheduleNextTick(context, appWidgetId, JSONObject(raw))
+    }
+
+    // ---- does the launcher still hold our views? ---------------------------
+    // The one thing a launcher cannot fake is that redrawing the LIST means
+    // coming back to NotesWidgetService for the rows, and a view it has thrown
+    // away has no adapter to ask with. So after a tap we rebind once more and
+    // listen for the answer: none coming back means the request went nowhere
+    // and a full redraw is owed.
+    //
+    // Every tap gets asked rather than guessed at, because the drop is not
+    // dependable — this device does it on some taps and not others — and both
+    // guesses are wrong half the time. Repainting a view the launcher kept is
+    // the flash this whole line of work set out to remove; leaving alone a view
+    // it threw away is the stranded widget. Asking costs one extra rebind,
+    // which is cheap and invisible, and the answer is never wrong.
+    //
+    // The redraw that follows is not a flash either: by then the widget is
+    // sitting on its defaults, so this is what puts the note back.
+
+    /** `what` is the widget id, so a burst of taps costs one probe. */
+    private val repaintHandler = Handler(Looper.getMainLooper())
+
+    private fun scheduleRepaint(context: Context, appWidgetId: Int) {
+        val message = Message.obtain(repaintHandler) { probeViews(context, appWidgetId) }
+        message.what = appWidgetId
+        repaintHandler.removeMessages(appWidgetId)
+        repaintHandler.sendMessageDelayed(message, REPAINT_DELAY_MS)
+    }
+
+    private fun cancelRepaint(appWidgetId: Int) = repaintHandler.removeMessages(appWidgetId)
+
+    /** True while a probe has gone out and its answer has not come back. */
+    private fun unmetProbe(prefs: android.content.SharedPreferences, appWidgetId: Int): Boolean =
+        ((prefs.all[pendingRebindsKey(appWidgetId)] as? Number)?.toInt() ?: 0) > 0
+
+    /**
+     * Rebind and listen for who comes back. Off the main thread, because it
+     * has to wait out REPAINT_SETTLE_MS — and blocking the main thread here
+     * would hold up the very request we are waiting for, since
+     * NotesWidgetService runs in this process.
+     */
+    private fun probeViews(context: Context, appWidgetId: Int) {
+        Thread {
+            try {
+                val prefs = HomeWidgetPlugin.getData(context)
+                val before = (prefs.all[pendingRebindsKey(appWidgetId)] as? Number)?.toInt() ?: 0
+                prefs.edit().putInt(pendingRebindsKey(appWidgetId), before + 1).apply()
+                AppWidgetManager.getInstance(context)
+                    .notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list)
+
+                Thread.sleep(REPAINT_SETTLE_MS)
+
+                val unmet = (prefs.all[pendingRebindsKey(appWidgetId)] as? Number)?.toInt() ?: 0
+                prefs.edit().putInt(pendingRebindsKey(appWidgetId), 0).apply()
+                android.util.Log.i(
+                    "NotesWidgetProvider", "views probe id=$appWidgetId unmet=$unmet"
+                )
+
+                if (unmet > 0) {
+                    repairWidget(context, AppWidgetManager.getInstance(context), appWidgetId)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("NotesWidgetProvider", "Views probe failed", e)
+            }
+        }.start()
+    }
+
+    /** A redraw the widget provably needs, hence `force` — never a flash. */
+    private fun repairWidget(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int
+    ) {
+        prefsClearProbe(context, appWidgetId)
+        updateWidget(context, appWidgetManager, appWidgetId, force = true)
+    }
+
+    private fun prefsClearProbe(context: Context, appWidgetId: Int) {
+        HomeWidgetPlugin.getData(context).edit()
+            .putInt(pendingRebindsKey(appWidgetId), 0)
+            .apply()
     }
 
     /**
@@ -267,7 +441,16 @@ class NotesWidgetProvider : AppWidgetProvider() {
                     // of seconds after pressing + or ticking a box.
                     .putString(listSigKey(id), listSignature(newPayloadStr))
                     .apply()
-                manager.notifyAppWidgetViewDataChanged(id, R.id.widget_list)
+                // Same rule as handleTick: a rebind can't reach a widget whose
+                // views the launcher has replaced with the layout defaults.
+                if (viewsAreStale(context, prefs, id)) {
+                    updateWidget(context, manager, id)
+                } else {
+                    manager.notifyAppWidgetViewDataChanged(id, R.id.widget_list)
+                    // And then come back and make sure it landed: this launcher
+                    // drops our views ~450ms after a tap that runs Dart.
+                    scheduleRepaint(context, id)
+                }
             } catch (e: Exception) {
                 android.util.Log.e("NotesWidgetProvider", "Optimistic update failed", e)
             }
@@ -279,7 +462,12 @@ class NotesWidgetProvider : AppWidgetProvider() {
     private fun updateWidget(
         context: Context,
         appWidgetManager: AppWidgetManager,
-        appWidgetId: Int
+        appWidgetId: Int,
+        // Set by the post-tap repaint check, the one caller that KNOWS the
+        // launcher is no longer holding what we last drew. Every skip below is
+        // an argument that the widget already shows this content; `force` is
+        // the caller for which that argument has been disproved.
+        force: Boolean = false
     ) {
         try {
             val prefs = HomeWidgetPlugin.getData(context)
@@ -306,17 +494,42 @@ class NotesWidgetProvider : AppWidgetProvider() {
             // on some launchers any rebind blanks the list for a frame, so a
             // pointless rebind is worse than no update.
             //
+            // The one thing a skip assumes is that the launcher is still
+            // holding what we drew. That assumption is falsifiable, and this
+            // device falsifies it: half a second after a row tap it throws our
+            // RemoteViews away and re-inflates the layout defaults, so a widget
+            // that is content-identical to what we last recorded is sitting on
+            // screen showing "no notes pinned". Skipping that update is what
+            // stranded it. Hence the two guards below: never skip while the APK
+            // has been replaced since we last drew (`stale`), and never skip
+            // when the repaint check has just proved the views are gone
+            // (`force`).
+            //
             // A request with neither marker (boot, launcher restart, first
             // placement) is the case where the launcher may hold no view of us
             // whatsoever, so it always gets the full redraw and the widget can
             // never be left blank.
+            val isVerify = consumeVerifyFlag(prefs, appWidgetId)
             val isSoft = consumeSoftFlag(prefs, appWidgetId)
+            val build = currentBuild(context)
+            val stale = prefs.getLong(drawnBuildKey(appWidgetId), -1L) != build
+
+            // Dart's once-per-launch self-check (ensureWidgetsDrawn). Nothing
+            // to repair, so the launcher's views are left exactly as they are
+            // — the timers are re-armed only because an app update or a
+            // force-stop silently clears every alarm we had scheduled.
+            if (!force && isVerify && !stale) {
+                android.util.Log.d("NotesWidgetProvider", "verify ok id=$appWidgetId")
+                reschedule(context, appWidgetId, payloadStr)
+                return
+            }
+
             val reason = when {
                 isSoft -> "dart"
                 tapInFlight(prefs) -> "tap"
                 else -> null
             }
-            if (reason != null && payloadStr != null) {
+            if (!force && reason != null && payloadStr != null && !stale) {
                 val storedSig = prefs.getString(chromeSigKey(appWidgetId), null)
                 if (storedSig != null && storedSig == chromeSignature(payloadStr)) {
                     val newSig = listSignature(payloadStr)
@@ -326,17 +539,7 @@ class NotesWidgetProvider : AppWidgetProvider() {
                         "NotesWidgetProvider",
                         "soft update id=$appWidgetId reason=$reason rowsChanged=$rowsChanged"
                     )
-                    try {
-                        val payload = JSONObject(payloadStr)
-                        if (payload.optString("type") == "todo" ||
-                            payload.optString("type") == "timed"
-                        ) {
-                            scheduleExpiryRefresh(context, appWidgetId, payload)
-                            scheduleNextTick(context, appWidgetId, payload)
-                        }
-                    } catch (e: Exception) {
-                        android.util.Log.e("NotesWidgetProvider", "Soft refresh failed", e)
-                    }
+                    reschedule(context, appWidgetId, payloadStr)
                     if (rowsChanged) {
                         prefs.edit().putString(listSigKey(appWidgetId), newSig).apply()
                         appWidgetManager.notifyAppWidgetViewDataChanged(
@@ -353,11 +556,12 @@ class NotesWidgetProvider : AppWidgetProvider() {
             // Reached only when neither marker is present (boot, launcher
             // restart, first placement — the cases where the launcher may hold
             // no view at all, so skipping here would leave the widget blank),
-            // or when a flagged update's FRAME really changed. Both cost a full
-            // redraw, which is a visible flash — worth knowing which.
+            // when a flagged update's FRAME really changed, or when our APK was
+            // replaced under the launcher. All cost a full redraw, which is a
+            // visible flash — worth knowing which.
             android.util.Log.d(
                 "NotesWidgetProvider",
-                "full redraw id=$appWidgetId reason=${reason ?: "system"}"
+                "full redraw id=$appWidgetId reason=${reason ?: "system"} stale=$stale"
             )
             val views = RemoteViews(context.packageName, R.layout.notes_widget_layout)
 
@@ -378,6 +582,7 @@ class NotesWidgetProvider : AppWidgetProvider() {
                 prefs.edit()
                     .putString(chromeSigKey(appWidgetId), "blank")
                     .putString(listSigKey(appWidgetId), "[]")
+                    .putLong(drawnBuildKey(appWidgetId), build)
                     .apply()
                 return
             }
@@ -454,6 +659,7 @@ class NotesWidgetProvider : AppWidgetProvider() {
             prefs.edit()
                 .putString(chromeSigKey(appWidgetId), chromeSignature(payloadStr))
                 .putString(listSigKey(appWidgetId), listSignature(payloadStr))
+                .putLong(drawnBuildKey(appWidgetId), build)
                 .apply()
         } catch (e: Exception) {
             android.util.Log.e("NotesWidgetProvider", "Failed to update widget", e)
@@ -470,6 +676,61 @@ class NotesWidgetProvider : AppWidgetProvider() {
         val ts = (prefs.all[key] as? Number)?.toLong() ?: 0L
         prefs.edit().remove(key).apply()
         return ts > 0 && System.currentTimeMillis() - ts < SOFT_UPDATE_VALID_MS
+    }
+
+    /**
+     * Consumes Dart's once-per-launch "please self-check" flag (see
+     * ensureWidgetsDrawn in home_widget_service.dart).
+     */
+    private fun consumeVerifyFlag(
+        prefs: android.content.SharedPreferences,
+        appWidgetId: Int
+    ): Boolean {
+        val key = verifyKey(appWidgetId)
+        val ts = (prefs.all[key] as? Number)?.toLong() ?: 0L
+        prefs.edit().remove(key).apply()
+        return ts > 0 && System.currentTimeMillis() - ts < VERIFY_UPDATE_VALID_MS
+    }
+
+    /**
+     * This build's [PackageInfo.lastUpdateTime]. A value that differs from the
+     * one recorded by the last draw means our APK was replaced underneath the
+     * launcher, which is exactly when it drops our RemoteViews.
+     */
+    private fun currentBuild(context: Context): Long = try {
+        context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+    } catch (e: Exception) {
+        0L
+    }
+
+    /**
+     * True when the launcher cannot still be holding a view we drew, so a
+     * skip or a list rebind would show nothing and only a full redraw can
+     * repair the widget. See [drawnBuildKey].
+     */
+    private fun viewsAreStale(
+        context: Context,
+        prefs: android.content.SharedPreferences,
+        appWidgetId: Int
+    ): Boolean = prefs.getLong(drawnBuildKey(appWidgetId), -1L) != currentBuild(context)
+
+    /**
+     * Re-arms the countdown/expiry alarms for [payloadStr]. Cheap and safe at
+     * any time, and worth doing whenever a redraw is skipped: replacing the
+     * APK or force-stopping the app clears every alarm we had scheduled, which
+     * would otherwise silently freeze the countdowns.
+     */
+    private fun reschedule(context: Context, appWidgetId: Int, payloadStr: String?) {
+        if (payloadStr.isNullOrEmpty()) return
+        try {
+            val payload = JSONObject(payloadStr)
+            if (payload.optString("type") == "todo" || payload.optString("type") == "timed") {
+                scheduleExpiryRefresh(context, appWidgetId, payload)
+                scheduleNextTick(context, appWidgetId, payload)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("NotesWidgetProvider", "Reschedule failed", e)
+        }
     }
 
     /**

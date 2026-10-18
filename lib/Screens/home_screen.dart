@@ -504,6 +504,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _initState() async {
+    // Before anything else: a widget whose views the launcher threw away (it
+    // does that whenever this app is replaced) would otherwise sit on its
+    // "no notes pinned" default forever, since nothing else in the app redraws
+    // a widget whose content hasn't changed. The provider repaints only when
+    // there is really something to repair. Not awaited — it must never hold up
+    // the app opening.
+    HomeWidgetService.ensureWidgetsDrawn();
+
     final saved = await LocalStorageService.loadAccounts();
     if (mounted && saved.isNotEmpty) {
       setState(() => _accountPool.addAll(saved));

@@ -22,6 +22,12 @@ internal const val DEFAULT_CHECKED_EXPANDED = false
 /** Where each widget remembers whether its checked items are open. */
 internal fun checkedExpandedKey(appWidgetId: Int) = "checked_expanded_$appWidgetId"
 
+/** When the launcher last asked this widget for its rows. */
+internal fun rowsRequestedKey(appWidgetId: Int) = "rows_requested_$appWidgetId"
+
+/** How many rebinds the provider has asked for but not seen land here. */
+internal fun pendingRebindsKey(appWidgetId: Int) = "rebinds_pending_$appWidgetId"
+
 /** One line in the widget list. */
 private sealed class Row {
     /** A task or counter. [index] is its position in the SAVED note, which is
@@ -60,6 +66,18 @@ private class NotesWidgetFactory(
 
     // Called whenever the provider calls notifyAppWidgetViewDataChanged().
     override fun onDataSetChanged() {
+        // The launcher only reaches for rows while it is holding a LIVE view
+        // of us, so this call is the one honest signal that our RemoteViews
+        // survived. The provider counts the rebinds it has asked for (see
+        // handleRepaint): every one that lands here is accounted for, and a
+        // leftover count afterwards means the launcher threw our views away
+        // and re-inflated the layout defaults in their place.
+        val prefs = HomeWidgetPlugin.getData(context)
+        val pending = (prefs.all[pendingRebindsKey(appWidgetId)] as? Number)?.toInt() ?: 0
+        prefs.edit()
+            .putLong(rowsRequestedKey(appWidgetId), System.currentTimeMillis())
+            .putInt(pendingRebindsKey(appWidgetId), if (pending > 0) pending - 1 else 0)
+            .apply()
         uid = ""
         noteId = ""
         type = "text"

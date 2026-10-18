@@ -187,4 +187,24 @@ void main() {
           'got stuck on "no notes pinned"',
     );
   });
+
+  test('the launch self-check reaches the provider as a check, not a redraw', () async {
+    seed(payloadOnWidget(remainingMs: frozenAt(tappedAt), body: 'preview before'));
+
+    await HomeWidgetService.ensureWidgetsDrawn();
+
+    expect(broadcasts, 1);
+    expect(store['verify_7'], isNotNull);
+    expect(
+      store['soft_update_7'],
+      isNull,
+      reason: 'the self-check says "look", not "redraw"',
+    );
+  });
+
+  test('the launch self-check asks for nothing when no widget is known', () async {
+    await HomeWidgetService.ensureWidgetsDrawn();
+
+    expect(broadcasts, 0);
+  });
 }
