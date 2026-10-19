@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/flex_page_dump.dart';
 import '../services/flex_session_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
@@ -525,6 +526,14 @@ class _FlexScreenState extends State<FlexScreen> {
                 icon: Icons.refresh_rounded,
                 onTap: () => _controller?.reload(),
               ),
+              // TEMPORARY: Phase 0 of the alerts feature. Goes away with
+              // FlexPageDump once the fees/marks/grades parsers exist.
+              _action(
+                tooltip: 'Debug: dump portal pages',
+                icon: Icons.bug_report_rounded,
+                color: Colors.white54,
+                onTap: _confirmDump,
+              ),
               if (!_onLoginPage)
                 _action(
                   tooltip: 'Sign out',
@@ -704,6 +713,80 @@ class _FlexScreenState extends State<FlexScreen> {
     } catch (e) {
       debugPrint('Could not open $url: $e');
     }
+  }
+
+  /// TEMPORARY — Phase 0 of the alerts feature.
+  ///
+  /// Writes the portal's dashboard and any fees/marks/grades pages to
+  /// app storage so their markup can be read before a parser is written
+  /// against it. The files carry the student's roll number, fee balance
+  /// and marks, so the dialog says so rather than dumping quietly; it
+  /// goes away along with [FlexPageDump] once the parsers exist.
+  Future<void> _confirmDump() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.navBar,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text(
+          'Dump portal pages?',
+          style: TextStyle(color: Colors.white, fontSize: 17),
+        ),
+        content: const Text(
+          "Writes the dashboard and any fees, marks or grades pages to "
+          'app storage so their layout can be read. They will contain '
+          'your roll number, fee balance and marks — pull them off the '
+          'phone, then delete them.',
+          style: TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.cardOrange,
+              foregroundColor: AppColors.textDark,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Dump'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    // Captured before the first await: once the dump is running this
+    // screen's own context may already be gone.
+    final messenger = ScaffoldMessenger.of(context);
+    // Long on purpose: a run that has to wait out the portal's retries
+    // takes a couple of minutes, and the default four seconds would make
+    // it look finished. The result replaces this when it lands.
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Fetching portal pages…'),
+        duration: Duration(minutes: 3),
+      ),
+    );
+
+    final report = await FlexPageDump.run(controller: _controller);
+    if (!mounted) return;
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text([
+          if (report.written.isNotEmpty)
+            '${report.written.length} files written',
+          for (final failure in report.failures) failure,
+          if (report.written.isNotEmpty) report.directory,
+        ].join('\n')),
+      ),
+    );
   }
 
   /// Asks before signing out — re-entering university credentials on a

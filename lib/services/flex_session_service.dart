@@ -19,6 +19,23 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// WebView for every read. If it ever stops working the WebView remains
 /// the fallback, which is why [FlexScreen] always renders the live site
 /// rather than only our parsed view of it.
+///
+/// What a session is worth, measured rather than guessed: the portal
+/// serves **five** requests and refuses the sixth, and nothing brings it
+/// back. A fifteen-second pause, re-reading the browser's own cookie
+/// jar, a `fetch()` made from inside the live document, and a real
+/// navigation were each tried and each failed identically — so neither
+/// the client nor the cookie is being rejected, the session is simply
+/// spent. Not one response in any run carried a `Set-Cookie`, so it is
+/// never rotated away from us either.
+///
+/// Two things follow for anything that reads pages. Route links must
+/// come from the document the WebView is already showing rather than by
+/// fetching `/Home`, since that fetch costs one of the five. And a
+/// polling loop has to plan for five reads per sign-in, not free
+/// reading. `/Student/GradeReport` is refused from every position it
+/// was tried at while pages queued behind it still came back, so it is
+/// unavailable on its own account — grades come from `Transcript`.
 class FlexSessionService {
   FlexSessionService._();
 
@@ -134,6 +151,18 @@ class FlexSessionService {
     }
   }
 
+  /// Headers for a Dart-side portal request, so the cookie, agent and
+  /// referer are the same whichever fetch goes out.
+  Map<String, String> get _headers => {
+        'Cookie': _cookie,
+        'User-Agent': _userAgent,
+        'Accept':
+            'text/html,application/xhtml+xml,application/xml;q=0.9,'
+            '*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': baseUrl,
+      };
+
   /// Fetches a portal page exactly as the browser would, so the HTML can
   /// be parsed in Dart without driving a WebView.
   ///
@@ -143,29 +172,59 @@ class FlexSessionService {
   /// "no data" — the WebView remains the source of truth, so a rejected
   /// fetch degrades to showing the live site rather than a wrong answer.
   Future<String?> getHtml(String path) async {
-    if (!hasSession) return null;
+    final result = await getHtmlDetailed(path);
+    return result.body;
+  }
+
+  /// TEMPORARY — Phase 0 of the Flex alerts feature.
+  ///
+  /// The request headers this service sends, so the page dump can make
+  /// its own requests without copying them. Goes away with FlexPageDump.
+  Map<String, String> get debugHeaders => _headers;
+
+  /// TEMPORARY — Phase 0 of the Flex alerts feature.
+  ///
+  /// Adopts a cookie handed back by the portal, the way a browser would.
+  /// Goes away with FlexPageDump.
+  void debugAdoptCookie(String cookie) {
+    if (cookie.isNotEmpty) _cookie = cookie;
+  }
+
+  /// TEMPORARY — Phase 0 of the Flex alerts feature.
+  ///
+  /// The same request as [getHtml], but it says what went wrong instead
+  /// of folding every failure into `null`. [getHtml] collapses "the
+  /// portal said 404" and "we were bounced to sign-in" into one answer
+  /// because its callers only care that they have nothing; the page
+  /// dump needs to tell them apart, since a route that 404s is a
+  /// different problem from a session that died mid-run.
+  ///
+  /// Goes away with FlexPageDump.
+  Future<({int? status, bool loginRedirect, String? body})> getHtmlDetailed(
+    String path,
+  ) async {
+    if (!hasSession) {
+      return (status: null, loginRedirect: false, body: null);
+    }
     final uri = Uri.parse(baseUrl + (path.startsWith('/') ? path : '/$path'));
     try {
       final response = await http
-          .get(
-            uri,
-            headers: {
-              'Cookie': _cookie,
-              'User-Agent': _userAgent,
-              'Accept':
-                  'text/html,application/xhtml+xml,application/xml;q=0.9,'
-                  '*/*;q=0.8',
-              'Accept-Language': 'en-US,en;q=0.9',
-              'Referer': baseUrl,
-            },
-          )
+          .get(uri, headers: _headers)
           .timeout(_timeout);
-      if (response.statusCode != 200) return null;
-      if (response.body.contains(_loginMarker)) return null;
-      return response.body;
+      if (response.statusCode != 200) {
+        return (
+          status: response.statusCode,
+          loginRedirect: false,
+          body: null,
+        );
+      }
+      if (response.body.contains(_loginMarker)) {
+        return (status: 200, loginRedirect: true, body: null);
+      }
+      return (status: 200, loginRedirect: false, body: response.body);
     } catch (e) {
       debugPrint('Flex fetch failed: $e');
-      return null;
+      return (status: null, loginRedirect: false, body: null);
     }
   }
 
