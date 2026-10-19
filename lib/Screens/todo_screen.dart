@@ -38,6 +38,7 @@ class _TodoScreenState extends State<TodoScreen> {
     _todoItems = List.from(widget.note.todoList ?? []);
     if (_todoItems.isEmpty) _todoItems.add(TodoItem(text: ""));
     for (var _ in _todoItems) _focusNodes.add(FocusNode());
+    for (final item in _todoItems) _assignRank(item); // NEW
     _regroup(); // NEW
     // The Note object this screen was built with can be stale — e.g. the
     // widget checked off an item after this note was last loaded into
@@ -62,6 +63,10 @@ class _TodoScreenState extends State<TodoScreen> {
       _titleController.text = fresh!.title;
       _todoItems = List.from(fresh.todoList);
       if (_todoItems.isEmpty) _todoItems.add(TodoItem(text: ""));
+      // Fresh instances, so the old ranks are meaningless now.
+      _rank.clear(); // NEW
+      _nextRank = 0; // NEW
+      for (final item in _todoItems) _assignRank(item); // NEW
       for (final f in _focusNodes) {
         f.dispose();
       }
@@ -79,28 +84,61 @@ class _TodoScreenState extends State<TodoScreen> {
     super.dispose();
   }
 
-  /// NEW: keeps the list as [unchecked..., checked...], preserving the
-  /// relative order inside each group. Focus nodes move together with their
-  /// items so they stay lined up. Call inside setState.
+  /// NEW: keeps the list as [unchecked..., checked...], with both groups in
+  /// rank order. The ranks are what make ticking reversible: an item that
+  /// leaves the unchecked group still knows where it belongs, so unticking
+  /// drops it back there instead of at the bottom.
+  /// Focus nodes move with their items so they stay lined up.
+  /// Call inside setState.
   void _regroup() {
-    final order = <int>[
-      for (var i = 0; i < _todoItems.length; i++)
-        if (!_todoItems[i].isDone) i,
-      for (var i = 0; i < _todoItems.length; i++)
-        if (_todoItems[i].isDone) i,
-    ];
-    final items = [for (final i in order) _todoItems[i]];
-    final nodes = [for (final i in order) _focusNodes[i]];
-    _todoItems = items;
+    final nodesOf = <TodoItem, FocusNode>{
+      for (var i = 0; i < _todoItems.length; i++) _todoItems[i]: _focusNodes[i],
+    };
+    int byRank(TodoItem a, TodoItem b) => _rankOf(a).compareTo(_rankOf(b));
+    final unchecked = [for (final i in _todoItems) if (!i.isDone) i]
+      ..sort(byRank);
+    final checked = [for (final i in _todoItems) if (i.isDone) i]
+      ..sort(byRank);
+    _todoItems = [...unchecked, ...checked];
     _focusNodes
       ..clear()
-      ..addAll(nodes);
+      ..addAll([for (final item in _todoItems) nodesOf[item]!]);
+  }
+
+  /// NEW: the order each item belongs in, so ticking one cannot lose its
+  /// place. Assigned once when the item appears and afterwards only handed
+  /// from one item to another, never regenerated — that way a rank can never
+  /// collide with one some other item is holding.
+  /// Keyed by identity: TodoItem has no == override, and the same instances
+  /// live for as long as the screen does.
+  final Map<TodoItem, int> _rank = {};
+  int _nextRank = 0;
+
+  int _rankOf(TodoItem item) => _rank[item] ?? 0;
+
+  /// NEW: gives [item] a rank past every one handed out so far.
+  void _assignRank(TodoItem item) => _rank[item] = _nextRank++;
+
+  /// NEW: the user dragged the unchecked tasks into a new order, so their
+  /// ranks have to follow. The ranks they already hold are handed back
+  /// sorted and dealt out along the new order: every rank stays unique, and
+  /// the checked items keep theirs untouched.
+  void _ranksToMatchOrder() {
+    final ranks = [
+      for (final item in _todoItems)
+        if (!item.isDone) _rankOf(item),
+    ]..sort();
+    var next = 0;
+    for (final item in _todoItems) {
+      if (item.isDone) continue;
+      _rank[item] = ranks[next++];
+    }
   }
 
   /// NEW: a checkbox was ticked or unticked, so move the item between groups.
-  void _onItemDoneChanged() {
-    setState(_regroup);
-  }
+  /// The item keeps its rank throughout, so _regroup puts it straight back
+  /// where it was: unticking no longer drops it at the bottom.
+  void _onItemDoneChanged(TodoItem item) => setState(_regroup);
 
   Future<void> _save() async {
     final savedList = _todoItems
@@ -128,8 +166,10 @@ class _TodoScreenState extends State<TodoScreen> {
     setState(() {
       final newItem = TodoItem(text: "");
       _todoItems.insert(currentIndex + 1, newItem);
+      _assignRank(newItem); // NEW: any unique rank; the call below fixes the order
       final node = FocusNode();
       _focusNodes.insert(currentIndex + 1, node);
+      _ranksToMatchOrder(); // NEW: the row belongs right where it was inserted
       _regroup(); // NEW: a new item is unchecked, so it belongs above the line
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (node.canRequestFocus) node.requestFocus();
@@ -139,11 +179,16 @@ class _TodoScreenState extends State<TodoScreen> {
 
   void _removeItemRow(int index) {
     if (_todoItems.length == 1) {
-      setState(() => _todoItems[0] = TodoItem(text: ""));
+      setState(() {
+        _rank.remove(_todoItems[0]); // NEW
+        _todoItems[0] = TodoItem(text: "");
+        _assignRank(_todoItems[0]); // NEW
+      });
       return;
     }
     final wasDone = _todoItems[index].isDone; // NEW
     setState(() {
+      _rank.remove(_todoItems[index]); // NEW: nowhere to come back to
       _todoItems.removeAt(index);
       _focusNodes[index].dispose();
       _focusNodes.removeAt(index);
@@ -258,6 +303,7 @@ class _TodoScreenState extends State<TodoScreen> {
                       _todoItems.insert(newIndex, item);
                       final node = _focusNodes.removeAt(oldIndex);
                       _focusNodes.insert(newIndex, node);
+                      _ranksToMatchOrder(); // NEW: the drag is the new order
                     });
                   },
                   proxyDecorator: (child, index, animation) {
@@ -294,9 +340,9 @@ class TodoRowItem extends StatefulWidget {
   final VoidCallback onNextRowRequested;
   final VoidCallback onDeleteRequested;
 
-  /// NEW: called after the checkbox is ticked or unticked so the screen can
-  /// move the item above/below the "checked items" line.
-  final VoidCallback onDoneChanged;
+  /// NEW: called after the checkbox is ticked or unticked, with the item that
+  /// changed, so the screen can move it above/below the "checked items" line.
+  final ValueChanged<TodoItem> onDoneChanged;
 
   const TodoRowItem({
     super.key,
@@ -336,7 +382,7 @@ class _TodoRowItemState extends State<TodoRowItem> {
         activeColor: AppColors.cardGreen,
         onChanged: (value) {
           setState(() => widget.item.isDone = value ?? false);
-          widget.onDoneChanged(); // NEW
+          widget.onDoneChanged(widget.item); // NEW
         },
       ),
       title: AnimatedOpacity(
