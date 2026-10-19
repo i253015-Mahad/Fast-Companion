@@ -1,0 +1,1913 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- begin::Head -->
+<head>
+    <style>
+        #overlay23 {
+            position: fixed;
+            display: none; /* hidden by default */
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(255,255,255,0.6);
+            z-index: 7777; /* ABOVE bootstrap modal */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .loader-box {
+            background: white;
+            padding: 25px 40px;
+            border-radius: 6px;
+            text-align: center;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+        }
+    </style>
+    <meta charset="utf-8" />
+    <title>
+        Flex | Student
+    </title>
+    <meta name="description" content="Latest updates and statistic charts">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <!--begin::Web font -->
+    <script src="https://ajax.googleapis.com/ajax/libs/webfont/1.6.16/webfont.js"></script>
+    <script src="/Content/jquery.js"></script>
+    
+    <script>
+        WebFont.load({
+            google: { "families": ["Montserrat:300,400,500,600,700", "Roboto:300,400,500,600,700"] },
+            active: function () {
+                sessionStorage.fonts = true;
+            }
+        });
+    </script>
+    <!--end::Web font -->
+    <!--begin::Base Styles -->
+    <!--begin::Page Vendors -->
+    <link href="/Assets/vendors/custom/fullcalendar/fullcalendar.bundle.css" rel="stylesheet" type="text/css" />
+    <!--end::Page Vendors -->
+    <link href="/Assets/vendors/base/vendors.bundle.css" rel="stylesheet" type="text/css" />
+    <link href="/Assets/demo/demo3/base/style.bundle.css" rel="stylesheet" type="text/css" />
+    <!--end::Base Styles -->
+    <link rel="shortcut icon" href="/Assets/demo/demo3/media/img/logo/favicon.ico" />
+    <link href="/Assets/CustomCss.css" rel="stylesheet" />
+    <script src="/Assets/vendors/base/vendors.bundle.js" type="text/javascript"></script>
+</head>
+<!-- end::Head -->
+<!-- end::Body -->
+<body class="m-page--fluid m--skin- m-content--skin-light2 m-header--fixed m-header--fixed-mobile m-aside-left--enabled m-aside-left--skin-dark m-aside-left--fixed m-aside-left--offcanvas m-footer--push m-aside--offcanvas-default">
+    <div id="overlay23" class="">
+        <div class="loader-box">
+            Loading, please wait...
+            <br /><br />
+            <img src="/Content/Loader.gif" style="height:20px;" />
+        </div>
+    </div>
+    <!-- begin:: Page -->
+    <div class="m-grid m-grid--hor m-grid--root m-page">
+        <!-- BEGIN: Header -->
+        <header class="m-grid__item m-header" data-minimize-offset="200" data-minimize-mobile-offset="200">
+            <div class="m-container m-container--fluid m-container--full-height">
+                <div class="m-stack m-stack--ver m-stack--desktop">
+                    <!-- BEGIN: Brand -->
+                    <div class="m-stack__item m-brand  m-brand--skin-dark ">
+                        <div class="m-stack m-stack--ver m-stack--general">
+                            <div class="m-stack__item m-stack__item--middle m-stack__item--center m-brand__logo">
+                                <a href="/Home" class="m-brand__logo-wrapper">
+                                    <img class="img-responsive" src="../../Assets/demo/demo3/media/img/logo/favicon.ico" alt="" />
+                                </a>
+                            </div>
+                            <div class="m-stack__item m-stack__item--middle m-brand__tools">
+                                <!-- BEGIN: Responsive Aside Left Menu Toggler -->
+                                <div id="m_aside_left_offcanvas_toggle" class="m-brand__icon m-brand__toggler m-brand__toggler--left m--visible-tablet-and-mobile-inline-block">
+                                    <span></span>
+                                </div>
+                                <!-- END -->
+                                <!-- BEGIN: Responsive Header Menu Toggler -->
+                                
+                                <!-- END -->
+                                <!-- BEGIN: Topbar Toggler -->
+                                <a id="m_aside_header_topbar_mobile_toggle" href="javascript:;" class="m-brand__icon m--visible-tablet-and-mobile-inline-block">
+                                    <i class="flaticon-more"></i>
+                                </a>
+                                <!-- BEGIN: Topbar Toggler -->
+                            </div>
+                        </div>
+                    </div>
+                    <!-- END: Brand -->
+                    <div class="m-stack__item m-stack__item--fluid m-header-head" style="text-align: center;color:white; vertical-align: bottom;">
+                        <div class=" align-items-center">
+                            <div class="mr-auto">
+                                <h5 class="m-subheader__title m-subheader__title--separator">
+                                    Marks
+                                </h5>
+                                <label>  
+</label>
+                            </div>
+
+                        </div>
+                    </div>
+                    <div class="m-stack__item m-stack__item--fluid m-header-head" id="m_header_nav">
+                        <!-- BEGIN: Topbar -->
+                        <div id="m_header_topbar" class="m-topbar  m-stack m-stack--ver m-stack--general">
+                            <div class="m-stack__item m-topbar__nav-wrapper">
+                                <ul class="m-topbar__nav m-nav m-nav--inline">
+
+                                    <li class="m-nav__item m-topbar__user-profile m-topbar__user-profile--img m-dropdown m-dropdown--medium m-dropdown--arrow m-dropdown--header-bg-fill m-dropdown--align-right m-dropdown--mobile-full-width m-dropdown--skin-light" data-dropdown-toggle="click">
+                                        <a href="#" class="m-nav__link m-dropdown__toggle">
+                                                    <span class="m-topbar__welcome m--hidden-tablet m--hidden-mobile">
+                                                        Hello Mr,&nbsp;
+                                                    </span>
+                                                <span class="m-topbar__username m--hidden-tablet m--hidden-mobile m--padding-right-15">
+                                                    <span class="m-link">
+                                                        [redacted]
+                                                    </span>
+                                                </span>
+                                                <span class="m-topbar__userpic">
+                                                        <img src="/Login/GetImage" />
+                                                </span>
+                                        </a>
+                                        <div class="m-dropdown__wrapper">
+                                            <span class="m-dropdown__arrow m-dropdown__arrow--right m-dropdown__arrow--adjust"></span>
+                                            <div class="m-dropdown__inner" style="width:70%; margin:auto;">
+                                                
+                                                <div class="m-dropdown__body">
+                                                    <div class="m-dropdown__content">
+                                                        <ul class="m-nav m-nav--skin-light">
+                                                            <li class="m-nav__item">
+                                                                <a href="/" class="m-nav__link">
+                                                                    <i class="m-nav__link-icon flaticon-profile"></i>
+                                                                    <span class="m-nav__link-title">
+                                                                        <span class="m-nav__link-wrap">
+                                                                            <span class="m-nav__link-text">
+                                                                                My Profile
+                                                                            </span>
+                                                                        </span>
+                                                                    </span>
+                                                                </a>
+                                                            </li>
+                                                            <li class="m-nav__item">
+                                                                <a href="/Student/ChangePassword" class="m-nav__link">
+                                                                    <i class="m-nav__link-icon flaticon-lock"></i>
+                                                                    <span class="m-nav__link-text">
+                                                                        Change Password
+                                                                    </span>
+                                                                </a>
+                                                            </li>
+                                                            <li class="m-nav__separator m-nav__separator--fit"></li>
+                                                            <li class="m-nav__item text-center">
+                                                                <a href="/Login/logout" class="btn btn-brand m-btn m-btn--custom m-btn--icon m-btn--pill m-btn--air">
+                                                                    <span>
+                                                                        <i class="la la-power-off"></i>
+                                                                        <span>
+                                                                            Logout
+                                                                        </span>
+                                                                    </span>
+                                                                </a>
+                                                            </li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <!-- END: Topbar -->
+                    </div>
+                </div>
+            </div>
+        </header>
+        <!-- END: Header -->
+        <!-- begin::Body -->
+        <div class="m-grid__item m-grid__item--fluid m-grid m-grid--ver-desktop m-grid--desktop m-body">
+            <!-- BEGIN: Left Aside -->
+            <button class="m-aside-left-close m-aside-left-close--skin-dark" id="m_aside_left_close_btn">
+                <i class="la la-close"></i>
+            </button>
+            <div id="m_aside_left" class="m-grid__item	m-aside-left  m-aside-left--skin-dark">
+                <!-- BEGIN: Aside Menu -->
+                <div id="m_ver_menu" class="m-aside-menu  m-aside-menu--skin-dark m-aside-menu--submenu-skin-dark m-aside-menu--dropdown " ata-menu-vertical="true" data-menu-dropdown="true" data-menu-scrollable="true" data-menu-dropdown-timeout="500">
+                    <ul class="m-menu__nav  m-menu__nav--dropdown-submenu-arrow ">
+
+                            <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true">
+                                <a href="/?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link ">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon la la-home"></i>
+                                    <span class="m-menu__link-text">
+                                        Home
+                                    </span>
+                                </a>
+                            </li>
+                        
+                            <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true">
+                                <a href="/Student/CourseRegistration?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-list-3"></i>
+                                    <span class="m-menu__link-text">
+                                        Course Registration
+                                    </span>
+                                </a>
+                            </li>
+
+
+                                <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true">
+                                    <a href="/Student/StudentAttendance?semid=77777" class="m-menu__link m-menu__toggle">
+                                        <span class="m-menu__item-here"></span>
+                                        <i class="m-menu__link-icon flaticon-list-2"></i>
+                                        <span class="m-menu__link-text">
+                                            Attendance
+                                        </span>
+                                    </a>
+                                </li>
+                                                    <li class="m-menu__item  m-menu__item--active" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/StudentMarks?semid=77777" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-edit-1"></i>
+                                    <span class="m-menu__link-text">
+                                        Marks
+                                    </span>
+                                </a>
+                            </li>
+
+                                <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                    <a href="/Student/PrintAdmitCard?semid=77777" class="m-menu__link m-menu__toggle">
+                                        <span class="m-menu__item-here"></span>
+                                        <i class="m-menu__link-icon flaticon-edit-1"></i>
+                                        <span class="m-menu__link-text">
+                                            Print Admit Card
+                                        </span>
+                                    </a>
+                                </li>
+
+
+                            <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/StudentPloRpt" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-time"></i>
+                                    <span class="m-menu__link-text">
+                                        Marks PLO Report
+                                    </span>
+                                </a>
+                            </li>
+
+                        
+                            <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/Transcript?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-folder-1"></i>
+                                    <span class="m-menu__link-text">
+                                        Transcript
+                                    </span>
+                                </a>
+                            </li>
+                                                        <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                    <a href="/Student/Challan?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link m-menu__toggle">
+                                        <span class="m-menu__item-here"></span>
+                                        <i class="m-menu__link-icon flaticon-coins"></i>
+                                        <span class="m-menu__link-text">
+                                            Fee Challan
+                                        </span>
+                                    </a>
+                                </li>
+                                                        <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                    <a href="/ConsolidatedFeeReport/ConsolidatedStdFeeReport?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link m-menu__toggle">
+                                        <span class="m-menu__item-here"></span>
+                                        <i class="m-menu__link-icon flaticon-coins"></i>
+                                        <span class="m-menu__link-text">
+                                            Fee Details
+                                        </span>
+                                    </a>
+                                </li>
+                                                    <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/CourseFeedback?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-file"></i>
+                                    <span class="m-menu__link-text">
+                                        Course Feedback
+                                    </span>
+                                </a>
+                            </li>
+                                                    <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/RetakeRequest?semid=77777&amp;EvaltypeId=5" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-file"></i>
+                                    <span class="m-menu__link-text">
+                                        Retake Exam Request
+                                    </span>
+                                </a>
+                            </li>
+                                                    <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/CourseWithdraw?semid=77777" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-file"></i>
+                                    <span class="m-menu__link-text">
+                                        Course Withdraw
+                                    </span>
+                                </a>
+                            </li>
+                                                    <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/GradeChangeRequest?semid=77777" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-file"></i>
+                                    <span class="m-menu__link-text">
+                                        Grade Change Request
+                                    </span>
+                                </a>
+                            </li>
+
+                            <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/TentativeStudyPlan?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-time"></i>
+                                    <span class="m-menu__link-text">
+                                        Tentative Study Plan
+                                    </span>
+                                </a>
+                            </li>
+
+                                <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                    <a href="/Student/GradeReport?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link m-menu__toggle">
+                                        <span class="m-menu__item-here"></span>
+                                        <i class="m-menu__link-icon flaticon-time"></i>
+                                        <span class="m-menu__link-text">
+                                            Grade Report
+                                        </span>
+                                    </a>
+                                </li>
+
+                    </ul>
+                </div>
+                <!-- END: Aside Menu -->
+            </div>
+            <!-- END: Left Aside -->
+
+            <div class="m-grid__item m-grid__item--fluid m-wrapper">
+
+                <div class="m-content">
+                    
+<form action="/Student/StudentMarks" method="post">    <div class="row">
+        <div class="col-md-12 text-center">
+            <select class="m-dropdown__toggle btn btn-brand dropdown-toggle" id="SemId" name="SemId" onchange="this.form.submit();"><option selected="selected" value="77777">Fall 7777</option>
+<option value="77777">Summer 7777</option>
+<option value="77777">Spring 7777</option>
+</select>
+            
+        </div>
+    </div>
+    <br />
+</form>
+        <div class="m-portlet m-portlet--brand m-portlet--head-solid-bg m-portlet--border-bottom-metal m-portlet--head-sm">
+            <div class="m-portlet__head">
+                <div class="m-portlet__head-caption">
+                    <div class="m-portlet__head-title">
+                        <h3 class="m-portlet__head-text">
+                            Student Marks
+                        </h3>
+                    </div>
+                </div>
+                <div class="m-portlet__head-tools">
+                    <ul class="nav nav-tabs m-tabs m-tabs-line  m-tabs-line--right m-tabs-line-danger" role="tablist">
+
+                                <li class="nav-item m-tabs__item">
+                                    <a class="nav-link m-tabs__link active" data-toggle="tab" href="#CL7777" role="tab">
+                                        CL7777
+                                    </a>
+                                </li>
+                                <li class="nav-item m-tabs__item">
+                                    <a class="nav-link m-tabs__link" data-toggle="tab" href="#CS7777" role="tab">
+                                        CS7777
+                                    </a>
+                                </li>
+                                <li class="nav-item m-tabs__item">
+                                    <a class="nav-link m-tabs__link" data-toggle="tab" href="#EE7777" role="tab">
+                                        EE7777
+                                    </a>
+                                </li>
+                                <li class="nav-item m-tabs__item">
+                                    <a class="nav-link m-tabs__link" data-toggle="tab" href="#EL7777" role="tab">
+                                        EL7777
+                                    </a>
+                                </li>
+                                <li class="nav-item m-tabs__item">
+                                    <a class="nav-link m-tabs__link" data-toggle="tab" href="#MT7777" role="tab">
+                                        MT7777
+                                    </a>
+                                </li>
+                                <li class="nav-item m-tabs__item">
+                                    <a class="nav-link m-tabs__link" data-toggle="tab" href="#SE7777" role="tab">
+                                        SE7777
+                                    </a>
+                                </li>
+                                <li class="nav-item m-tabs__item">
+                                    <a class="nav-link m-tabs__link" data-toggle="tab" href="#SS7777" role="tab">
+                                        SS7777
+                                    </a>
+                                </li>
+                                <li class="nav-item m-tabs__item">
+                                    <a class="nav-link m-tabs__link" data-toggle="tab" href="#SS7777" role="tab">
+                                        SS7777
+                                    </a>
+                                </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="m-portlet__body">
+                <div class="tab-content">
+
+                            <div class="tab-pane active" id="CL7777">
+                                <div id="accordion">
+                                    <h5>CL7777-Data Structures - Lab (BSE-3C)</h5>
+                                                <div class="card">
+                                                    <div class="card-header" id="Lab Work">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link" data-toggle="collapse" data-target="#CL7777-Lab_Work" aria-expanded="true" aria-controls="CL7777-Lab_Work">
+                                                                Lab Work
+                                                            </button>
+
+                                                        </h5>
+                                                    </div>
+                                                        <div id="CL7777-Lab_Work" class="collapse show" data-parent="#accordion" aria-labelledby="Lab Work">
+                                                            <div class="card-body">
+                                                                <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive" width="100%">
+                                                                    <thead>
+                                                                        <tr class="titlerow">
+                                                                            <th class="text-center">Lab Work #</th>
+                                                                            <th class="text-center">Weightage</th>
+                                                                            <th class="text-center">Obtained Marks</th>
+                                                                            <th class="text-center">Total Marks</th>
+                                                                            <th class="text-center">Average</th>
+                                                                            <th class="text-center">Standard Deviation</th>
+                                                                            <th class="text-center">Minimum</th>
+                                                                            <th class="text-center">Maximum</th>
+
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">77 </td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">77.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+
+
+
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 2</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">77 </td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">77.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+
+
+
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 3</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">77 </td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">77.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+
+
+
+                                                                            </tr>
+                                                                    </tbody>
+                                                                    <tfoot>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+
+
+                                                                                    <td class="text-center totalColweightage">77.77</td>
+                                                                                    <td class="text-center totalColObtMarks">77.77777</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+                                                                        </tr>
+                                                                    </tfoot>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                </div>
+                                        <div class="card">
+                                            <div class="card-header" id="Grand Total Marks">
+                                                <h5 class="mb-0">
+                                                    <button class="btn btn-link" data-toggle="collapse" data-target="#CL7777-Grand_Total_Marks" aria-expanded="false" aria-controls="CL7777-Grand Total Marks" onclick="ftn_calculateMarks('7777')">
+                                                        Grand Total Marks
+                                                    </button>
+                                                </h5>
+                                            </div>
+                                            <div id="CL7777-Grand_Total_Marks" class="collapse" data-parent="#accordion" aria-labelledby="Grand Total Marks">
+                                                <div class="card-body">
+                                                    <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive" width="100%">
+                                                        <thead>
+                                                            <tr class="titlerow">
+
+                                                                <th class="text-center">Total Marks</th>
+                                                                <th class="text-center">Obtained Marks</th>
+                                                                <th class="text-center">Class Average</th>
+                                                                <th class="text-center">Min</th>
+                                                                <th class="text-center">Max</th>
+                                                                <th class="text-center">Std Dev</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody></tbody>
+                                                        <tfoot>
+                                                        </tfoot>
+                                                    </table>
+
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                </div>
+                            </div>
+                            <div class="tab-pane" id="CS7777">
+                                <div id="accordion">
+                                    <h5>CS7777-Data Structures (BSE-3C)</h5>
+                                                <div class="card">
+                                                    <div class="card-header" id="Assignment">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link" data-toggle="collapse" data-target="#CS7777-Assignment" aria-expanded="true" aria-controls="CS7777-Assignment">
+                                                                Assignment
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+                                                        <div id="CS7777-Assignment" class="collapse show" data-parent="#accordion" aria-labelledby="Assignment">
+                                                            <div class="card-body">
+                                                                <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive">
+                                                                    <thead>
+                                                                        <tr class="titlerow">
+                                                                            <th class="text-center">Assignment #</th>
+                                                                            <th class="text-center">Weightage</th>
+                                                                            <th class="text-center">Obtained Marks</th>
+                                                                            <th class="text-center">Total Marks</th>
+                                                                            <th class="text-center">Average</th>
+                                                                            <th class="text-center">Standard Deviation</th>
+                                                                            <th class="text-center">Minimum</th>
+                                                                            <th class="text-center">Maximum</th>
+
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">7 </td>
+                                                                                    <td class="text-center ObtMarks">777</td>
+                                                                                <td class="text-center GrandTotal">777</td>
+                                                                                    <td class="text-center AverageMarks">77.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">77  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">777 </td>
+                                                                            </tr>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+                                                                                    <td class="text-center totalColweightage">7</td>
+                                                                                    <td class="text-center totalColObtMarks">7</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+
+                                                                        </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                </div>
+                                                <div class="card">
+                                                    <div class="card-header" id="Quiz">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link collapsed" data-toggle="collapse" data-target="#CS7777-Quiz" aria-expanded="false" aria-controls="CS7777-Quiz">
+                                                                Quiz
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+
+                                                    <div id="CS7777-Quiz" class="collapse" data-parent="#accordion" aria-labelledby="Quiz">
+                                                        <div class="card-body">
+                                                            <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive">
+                                                                <thead>
+                                                                    <tr class="titlerow">
+                                                                        <th class="text-center">Quiz #</th>
+                                                                        <th class="text-center">Weightage</th>
+                                                                        <th class="text-center">Obtained Marks</th>
+                                                                        <th class="text-center">Total Marks</th>
+                                                                        <th class="text-center">Average</th>
+                                                                        <th class="text-center">Standard Deviation</th>
+                                                                        <th class="text-center">Minimum</th>
+                                                                        <th class="text-center">Maximum</th>
+
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">7 </td>
+                                                                                    <td class="text-center ObtMarks">7</td>
+                                                                                <td class="text-center GrandTotal">7</td>
+                                                                                    <td class="text-center AverageMarks">7.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">7 </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 2</td>
+                                                                                <td class="text-center weightage">7 </td>
+                                                                                    <td class="text-center ObtMarks">77</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">7.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+                                                                                    <td class="text-center totalColweightage">77</td>
+                                                                                    <td class="text-center totalColObtMarks">7.77</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+
+                                                                        </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="card">
+                                                    <div class="card-header" id="Sessional-I">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link collapsed" data-toggle="collapse" data-target="#CS7777-Sessional-I" aria-expanded="false" aria-controls="CS7777-Sessional-I">
+                                                                Sessional-I
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+
+                                                    <div id="CS7777-Sessional-I" class="collapse" data-parent="#accordion" aria-labelledby="Sessional-I">
+                                                        <div class="card-body">
+                                                            <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive">
+                                                                <thead>
+                                                                    <tr class="titlerow">
+                                                                        <th class="text-center">Sessional-I #</th>
+                                                                        <th class="text-center">Weightage</th>
+                                                                        <th class="text-center">Obtained Marks</th>
+                                                                        <th class="text-center">Total Marks</th>
+                                                                        <th class="text-center">Average</th>
+                                                                        <th class="text-center">Standard Deviation</th>
+                                                                        <th class="text-center">Minimum</th>
+                                                                        <th class="text-center">Maximum</th>
+
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">77</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">77.7</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 2</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">7</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">7.7</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 3</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">77</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">7.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7.7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+                                                                                    <td class="text-center totalColweightage">77</td>
+                                                                                    <td class="text-center totalColObtMarks">77.77777</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+
+                                                                        </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                        <div class="card">
+                                            <div class="card-header" id="Grand Total Marks">
+                                                <h5 class="mb-0">
+                                                    <button class="btn btn-link" data-toggle="collapse" data-target="#CS7777-Grand_Total_Marks" aria-expanded="false" aria-controls="CS7777-Grand Total Marks" onclick="ftn_calculateMarks('7777');">
+                                                        Grand Total Marks
+                                                    </button>
+                                                </h5>
+                                            </div>
+                                            <div id="CS7777-Grand_Total_Marks" class="collapse" data-parent="#accordion" aria-labelledby="Grand Total Marks">
+                                                <div class="card-body">
+                                                    <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive" width="100%">
+                                                        <thead>
+                                                            <tr class="titlerow">
+
+                                                                <th class="text-center">Total Marks</th>
+                                                                <th class="text-center">Obtained Marks</th>
+                                                                <th class="text-center">Class Average</th>
+                                                                <th class="text-center">Min</th>
+                                                                <th class="text-center">Max</th>
+                                                                <th class="text-center">Std Dev</th>
+
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody></tbody>
+                                                        <tfoot>
+                                                        </tfoot>
+                                                    </table>
+
+
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                </div>
+                            </div>
+                            <div class="tab-pane" id="EE7777">
+                                <div id="accordion">
+                                    <h5>EE7777-Computer Organization and Assembly Language (BSE-3C)</h5>
+                                                <div class="card">
+                                                    <div class="card-header" id="Assignment">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link" data-toggle="collapse" data-target="#EE7777-Assignment" aria-expanded="true" aria-controls="EE7777-Assignment">
+                                                                Assignment
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+                                                        <div id="EE7777-Assignment" class="collapse show" data-parent="#accordion" aria-labelledby="Assignment">
+                                                            <div class="card-body">
+                                                                <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive">
+                                                                    <thead>
+                                                                        <tr class="titlerow">
+                                                                            <th class="text-center">Assignment #</th>
+                                                                            <th class="text-center">Weightage</th>
+                                                                            <th class="text-center">Obtained Marks</th>
+                                                                            <th class="text-center">Total Marks</th>
+                                                                            <th class="text-center">Average</th>
+                                                                            <th class="text-center">Standard Deviation</th>
+                                                                            <th class="text-center">Minimum</th>
+                                                                            <th class="text-center">Maximum</th>
+
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">7 </td>
+                                                                                    <td class="text-center ObtMarks">77</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">77.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">77  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+                                                                                    <td class="text-center totalColweightage">7</td>
+                                                                                    <td class="text-center totalColObtMarks">7</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+
+                                                                        </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                </div>
+                                                <div class="card">
+                                                    <div class="card-header" id="Quiz">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link collapsed" data-toggle="collapse" data-target="#EE7777-Quiz" aria-expanded="false" aria-controls="EE7777-Quiz">
+                                                                Quiz
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+
+                                                    <div id="EE7777-Quiz" class="collapse" data-parent="#accordion" aria-labelledby="Quiz">
+                                                        <div class="card-body">
+                                                            <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive">
+                                                                <thead>
+                                                                    <tr class="titlerow">
+                                                                        <th class="text-center">Quiz #</th>
+                                                                        <th class="text-center">Weightage</th>
+                                                                        <th class="text-center">Obtained Marks</th>
+                                                                        <th class="text-center">Total Marks</th>
+                                                                        <th class="text-center">Average</th>
+                                                                        <th class="text-center">Standard Deviation</th>
+                                                                        <th class="text-center">Minimum</th>
+                                                                        <th class="text-center">Maximum</th>
+
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">7 </td>
+                                                                                    <td class="text-center ObtMarks">77</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">77.7</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7.7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 2</td>
+                                                                                <td class="text-center weightage">7 </td>
+                                                                                    <td class="text-center ObtMarks">77</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">7.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7.7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+                                                                                    <td class="text-center totalColweightage">7</td>
+                                                                                    <td class="text-center totalColObtMarks">7</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+
+                                                                        </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="card">
+                                                    <div class="card-header" id="Sessional-I">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link collapsed" data-toggle="collapse" data-target="#EE7777-Sessional-I" aria-expanded="false" aria-controls="EE7777-Sessional-I">
+                                                                Sessional-I
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+
+                                                    <div id="EE7777-Sessional-I" class="collapse" data-parent="#accordion" aria-labelledby="Sessional-I">
+                                                        <div class="card-body">
+                                                            <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive">
+                                                                <thead>
+                                                                    <tr class="titlerow">
+                                                                        <th class="text-center">Sessional-I #</th>
+                                                                        <th class="text-center">Weightage</th>
+                                                                        <th class="text-center">Obtained Marks</th>
+                                                                        <th class="text-center">Total Marks</th>
+                                                                        <th class="text-center">Average</th>
+                                                                        <th class="text-center">Standard Deviation</th>
+                                                                        <th class="text-center">Minimum</th>
+                                                                        <th class="text-center">Maximum</th>
+
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">7 </td>
+                                                                                    <td class="text-center ObtMarks">7.77</td>
+                                                                                <td class="text-center GrandTotal">77.7</td>
+                                                                                    <td class="text-center AverageMarks">77.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77.7 </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 2</td>
+                                                                                <td class="text-center weightage">7 </td>
+                                                                                    <td class="text-center ObtMarks">7.77</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">7.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77.77 </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 3</td>
+                                                                                <td class="text-center weightage">7 </td>
+                                                                                    <td class="text-center ObtMarks">7.7</td>
+                                                                                <td class="text-center GrandTotal">7.7</td>
+                                                                                    <td class="text-center AverageMarks">7.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">7.7 </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 4</td>
+                                                                                <td class="text-center weightage">7 </td>
+                                                                                    <td class="text-center ObtMarks">7.7</td>
+                                                                                <td class="text-center GrandTotal">7.7</td>
+                                                                                    <td class="text-center AverageMarks">7.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">7.7 </td>
+                                                                            </tr>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+                                                                                    <td class="text-center totalColweightage">7</td>
+                                                                                    <td class="text-center totalColObtMarks">7</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+
+                                                                        </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                        <div class="card">
+                                            <div class="card-header" id="Grand Total Marks">
+                                                <h5 class="mb-0">
+                                                    <button class="btn btn-link" data-toggle="collapse" data-target="#EE7777-Grand_Total_Marks" aria-expanded="false" aria-controls="EE7777-Grand Total Marks" onclick="ftn_calculateMarks('7777');">
+                                                        Grand Total Marks
+                                                    </button>
+                                                </h5>
+                                            </div>
+                                            <div id="EE7777-Grand_Total_Marks" class="collapse" data-parent="#accordion" aria-labelledby="Grand Total Marks">
+                                                <div class="card-body">
+                                                    <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive" width="100%">
+                                                        <thead>
+                                                            <tr class="titlerow">
+
+                                                                <th class="text-center">Total Marks</th>
+                                                                <th class="text-center">Obtained Marks</th>
+                                                                <th class="text-center">Class Average</th>
+                                                                <th class="text-center">Min</th>
+                                                                <th class="text-center">Max</th>
+                                                                <th class="text-center">Std Dev</th>
+
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody></tbody>
+                                                        <tfoot>
+                                                        </tfoot>
+                                                    </table>
+
+
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                </div>
+                            </div>
+                            <div class="tab-pane" id="EL7777">
+                                <div id="accordion">
+                                    <h5>EL7777-Computer Organization and Assembly Language - Lab (BSE-3C)</h5>
+                                                <div class="card">
+                                                    <div class="card-header" id="Lab Work">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link" data-toggle="collapse" data-target="#EL7777-Lab_Work" aria-expanded="true" aria-controls="EL7777-Lab_Work">
+                                                                Lab Work
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+                                                        <div id="EL7777-Lab_Work" class="collapse show" data-parent="#accordion" aria-labelledby="Lab Work">
+                                                            <div class="card-body">
+                                                                <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive">
+                                                                    <thead>
+                                                                        <tr class="titlerow">
+                                                                            <th class="text-center">Lab Work #</th>
+                                                                            <th class="text-center">Weightage</th>
+                                                                            <th class="text-center">Obtained Marks</th>
+                                                                            <th class="text-center">Total Marks</th>
+                                                                            <th class="text-center">Average</th>
+                                                                            <th class="text-center">Standard Deviation</th>
+                                                                            <th class="text-center">Minimum</th>
+                                                                            <th class="text-center">Maximum</th>
+
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">-</td>
+                                                                                <td class="text-center GrandTotal">7</td>
+                                                                                    <td class="text-center AverageMarks"></td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks"> </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 2</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">77</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">77.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">77  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 3</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">-</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">77.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">77  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 4</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">77</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">77.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">77  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 5</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">77</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">77.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">77  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 6</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">77</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">77.7</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">77  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 7</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">77</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">77.7</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+                                                                                    <td class="text-center totalColweightage">77</td>
+                                                                                    <td class="text-center totalColObtMarks">77.77777</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+
+                                                                        </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                </div>
+                                        <div class="card">
+                                            <div class="card-header" id="Grand Total Marks">
+                                                <h5 class="mb-0">
+                                                    <button class="btn btn-link" data-toggle="collapse" data-target="#EL7777-Grand_Total_Marks" aria-expanded="false" aria-controls="EL7777-Grand Total Marks" onclick="ftn_calculateMarks('7777');">
+                                                        Grand Total Marks
+                                                    </button>
+                                                </h5>
+                                            </div>
+                                            <div id="EL7777-Grand_Total_Marks" class="collapse" data-parent="#accordion" aria-labelledby="Grand Total Marks">
+                                                <div class="card-body">
+                                                    <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive" width="100%">
+                                                        <thead>
+                                                            <tr class="titlerow">
+
+                                                                <th class="text-center">Total Marks</th>
+                                                                <th class="text-center">Obtained Marks</th>
+                                                                <th class="text-center">Class Average</th>
+                                                                <th class="text-center">Min</th>
+                                                                <th class="text-center">Max</th>
+                                                                <th class="text-center">Std Dev</th>
+
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody></tbody>
+                                                        <tfoot>
+                                                        </tfoot>
+                                                    </table>
+
+
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                </div>
+                            </div>
+                            <div class="tab-pane" id="MT7777">
+                                <div id="accordion">
+                                    <h5>MT7777-Linear Algebra (BSE-3C)</h5>
+                                                <div class="card">
+                                                    <div class="card-header" id="Assignment">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link" data-toggle="collapse" data-target="#MT7777-Assignment" aria-expanded="true" aria-controls="MT7777-Assignment">
+                                                                Assignment
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+                                                        <div id="MT7777-Assignment" class="collapse show" data-parent="#accordion" aria-labelledby="Assignment">
+                                                            <div class="card-body">
+                                                                <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive">
+                                                                    <thead>
+                                                                        <tr class="titlerow">
+                                                                            <th class="text-center">Assignment #</th>
+                                                                            <th class="text-center">Weightage</th>
+                                                                            <th class="text-center">Obtained Marks</th>
+                                                                            <th class="text-center">Total Marks</th>
+                                                                            <th class="text-center">Average</th>
+                                                                            <th class="text-center">Standard Deviation</th>
+                                                                            <th class="text-center">Minimum</th>
+                                                                            <th class="text-center">Maximum</th>
+
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">77.7</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">77.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">77  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 2</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">777</td>
+                                                                                <td class="text-center GrandTotal">777</td>
+                                                                                    <td class="text-center AverageMarks">77.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">77  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">777 </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 3</td>
+                                                                                <td class="text-center weightage">7.77 </td>
+                                                                                    <td class="text-center ObtMarks">77</td>
+                                                                                <td class="text-center GrandTotal">777</td>
+                                                                                    <td class="text-center AverageMarks">77.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">77  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+                                                                                    <td class="text-center totalColweightage">7</td>
+                                                                                    <td class="text-center totalColObtMarks">7.77777</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+
+                                                                        </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                </div>
+                                                <div class="card">
+                                                    <div class="card-header" id="Quiz">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link collapsed" data-toggle="collapse" data-target="#MT7777-Quiz" aria-expanded="false" aria-controls="MT7777-Quiz">
+                                                                Quiz
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+
+                                                    <div id="MT7777-Quiz" class="collapse" data-parent="#accordion" aria-labelledby="Quiz">
+                                                        <div class="card-body">
+                                                            <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive">
+                                                                <thead>
+                                                                    <tr class="titlerow">
+                                                                        <th class="text-center">Quiz #</th>
+                                                                        <th class="text-center">Weightage</th>
+                                                                        <th class="text-center">Obtained Marks</th>
+                                                                        <th class="text-center">Total Marks</th>
+                                                                        <th class="text-center">Average</th>
+                                                                        <th class="text-center">Standard Deviation</th>
+                                                                        <th class="text-center">Minimum</th>
+                                                                        <th class="text-center">Maximum</th>
+
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">7 </td>
+                                                                                    <td class="text-center ObtMarks">-</td>
+                                                                                <td class="text-center GrandTotal">7</td>
+                                                                                    <td class="text-center AverageMarks">7.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7.7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">7 </td>
+                                                                            </tr>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+                                                                                    <td class="text-center totalColweightage">7</td>
+                                                                                    <td class="text-center totalColObtMarks">7</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+
+                                                                        </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="card">
+                                                    <div class="card-header" id="Sessional-I">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link collapsed" data-toggle="collapse" data-target="#MT7777-Sessional-I" aria-expanded="false" aria-controls="MT7777-Sessional-I">
+                                                                Sessional-I
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+
+                                                    <div id="MT7777-Sessional-I" class="collapse" data-parent="#accordion" aria-labelledby="Sessional-I">
+                                                        <div class="card-body">
+                                                            <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive">
+                                                                <thead>
+                                                                    <tr class="titlerow">
+                                                                        <th class="text-center">Sessional-I #</th>
+                                                                        <th class="text-center">Weightage</th>
+                                                                        <th class="text-center">Obtained Marks</th>
+                                                                        <th class="text-center">Total Marks</th>
+                                                                        <th class="text-center">Average</th>
+                                                                        <th class="text-center">Standard Deviation</th>
+                                                                        <th class="text-center">Minimum</th>
+                                                                        <th class="text-center">Maximum</th>
+
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">77 </td>
+                                                                                    <td class="text-center ObtMarks">77</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">77.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">77.7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77.7 </td>
+                                                                            </tr>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+                                                                                    <td class="text-center totalColweightage">77</td>
+                                                                                    <td class="text-center totalColObtMarks">77</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+
+                                                                        </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                        <div class="card">
+                                            <div class="card-header" id="Grand Total Marks">
+                                                <h5 class="mb-0">
+                                                    <button class="btn btn-link" data-toggle="collapse" data-target="#MT7777-Grand_Total_Marks" aria-expanded="false" aria-controls="MT7777-Grand Total Marks" onclick="ftn_calculateMarks('7777');">
+                                                        Grand Total Marks
+                                                    </button>
+                                                </h5>
+                                            </div>
+                                            <div id="MT7777-Grand_Total_Marks" class="collapse" data-parent="#accordion" aria-labelledby="Grand Total Marks">
+                                                <div class="card-body">
+                                                    <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive" width="100%">
+                                                        <thead>
+                                                            <tr class="titlerow">
+
+                                                                <th class="text-center">Total Marks</th>
+                                                                <th class="text-center">Obtained Marks</th>
+                                                                <th class="text-center">Class Average</th>
+                                                                <th class="text-center">Min</th>
+                                                                <th class="text-center">Max</th>
+                                                                <th class="text-center">Std Dev</th>
+
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody></tbody>
+                                                        <tfoot>
+                                                        </tfoot>
+                                                    </table>
+
+
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                </div>
+                            </div>
+                            <div class="tab-pane" id="SE7777">
+                                <div id="accordion">
+                                    <h5>SE7777-Introduction to Software Engineering (BSE-3C)</h5>
+                                                <div class="card">
+                                                    <div class="card-header" id="Sessional-I">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link" data-toggle="collapse" data-target="#SE7777-Sessional-I" aria-expanded="true" aria-controls="SE7777-Sessional-I">
+                                                                Sessional-I
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+                                                        <div id="SE7777-Sessional-I" class="collapse show" data-parent="#accordion" aria-labelledby="Sessional-I">
+                                                            <div class="card-body">
+                                                                <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive">
+                                                                    <thead>
+                                                                        <tr class="titlerow">
+                                                                            <th class="text-center">Sessional-I #</th>
+                                                                            <th class="text-center">Weightage</th>
+                                                                            <th class="text-center">Obtained Marks</th>
+                                                                            <th class="text-center">Total Marks</th>
+                                                                            <th class="text-center">Average</th>
+                                                                            <th class="text-center">Standard Deviation</th>
+                                                                            <th class="text-center">Minimum</th>
+                                                                            <th class="text-center">Maximum</th>
+
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">77 </td>
+                                                                                    <td class="text-center ObtMarks">77.7</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">77.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">77  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+                                                                                    <td class="text-center totalColweightage">77</td>
+                                                                                    <td class="text-center totalColObtMarks">7.7</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+
+                                                                        </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                </div>
+                                        <div class="card">
+                                            <div class="card-header" id="Grand Total Marks">
+                                                <h5 class="mb-0">
+                                                    <button class="btn btn-link" data-toggle="collapse" data-target="#SE7777-Grand_Total_Marks" aria-expanded="false" aria-controls="SE7777-Grand Total Marks" onclick="ftn_calculateMarks('7777');">
+                                                        Grand Total Marks
+                                                    </button>
+                                                </h5>
+                                            </div>
+                                            <div id="SE7777-Grand_Total_Marks" class="collapse" data-parent="#accordion" aria-labelledby="Grand Total Marks">
+                                                <div class="card-body">
+                                                    <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive" width="100%">
+                                                        <thead>
+                                                            <tr class="titlerow">
+
+                                                                <th class="text-center">Total Marks</th>
+                                                                <th class="text-center">Obtained Marks</th>
+                                                                <th class="text-center">Class Average</th>
+                                                                <th class="text-center">Min</th>
+                                                                <th class="text-center">Max</th>
+                                                                <th class="text-center">Std Dev</th>
+
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody></tbody>
+                                                        <tfoot>
+                                                        </tfoot>
+                                                    </table>
+
+
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                </div>
+                            </div>
+                            <div class="tab-pane" id="SS7777">
+                                <div id="accordion">
+                                    <h5>SS7777-Pakistan Studies (BSE-3C)</h5>
+                                                <div class="card">
+                                                    <div class="card-header" id="Assignment">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link" data-toggle="collapse" data-target="#SS7777-Assignment" aria-expanded="true" aria-controls="SS7777-Assignment">
+                                                                Assignment
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+                                                        <div id="SS7777-Assignment" class="collapse show" data-parent="#accordion" aria-labelledby="Assignment">
+                                                            <div class="card-body">
+                                                                <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive">
+                                                                    <thead>
+                                                                        <tr class="titlerow">
+                                                                            <th class="text-center">Assignment #</th>
+                                                                            <th class="text-center">Weightage</th>
+                                                                            <th class="text-center">Obtained Marks</th>
+                                                                            <th class="text-center">Total Marks</th>
+                                                                            <th class="text-center">Average</th>
+                                                                            <th class="text-center">Standard Deviation</th>
+                                                                            <th class="text-center">Minimum</th>
+                                                                            <th class="text-center">Maximum</th>
+
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">7 </td>
+                                                                                    <td class="text-center ObtMarks">7</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">7.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">7 </td>
+                                                                            </tr>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+                                                                                    <td class="text-center totalColweightage">7</td>
+                                                                                    <td class="text-center totalColObtMarks">7.7</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+
+                                                                        </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                </div>
+                                                <div class="card">
+                                                    <div class="card-header" id="Quiz">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link collapsed" data-toggle="collapse" data-target="#SS7777-Quiz" aria-expanded="false" aria-controls="SS7777-Quiz">
+                                                                Quiz
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+
+                                                    <div id="SS7777-Quiz" class="collapse" data-parent="#accordion" aria-labelledby="Quiz">
+                                                        <div class="card-body">
+                                                            <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive">
+                                                                <thead>
+                                                                    <tr class="titlerow">
+                                                                        <th class="text-center">Quiz #</th>
+                                                                        <th class="text-center">Weightage</th>
+                                                                        <th class="text-center">Obtained Marks</th>
+                                                                        <th class="text-center">Total Marks</th>
+                                                                        <th class="text-center">Average</th>
+                                                                        <th class="text-center">Standard Deviation</th>
+                                                                        <th class="text-center">Minimum</th>
+                                                                        <th class="text-center">Maximum</th>
+
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">7 </td>
+                                                                                    <td class="text-center ObtMarks">-</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">7.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">7 </td>
+                                                                            </tr>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+                                                                                    <td class="text-center totalColweightage">7</td>
+                                                                                    <td class="text-center totalColObtMarks">7</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+
+                                                                        </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="card">
+                                                    <div class="card-header" id="Sessional-I">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link collapsed" data-toggle="collapse" data-target="#SS7777-Sessional-I" aria-expanded="false" aria-controls="SS7777-Sessional-I">
+                                                                Sessional-I
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+
+                                                    <div id="SS7777-Sessional-I" class="collapse" data-parent="#accordion" aria-labelledby="Sessional-I">
+                                                        <div class="card-body">
+                                                            <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive">
+                                                                <thead>
+                                                                    <tr class="titlerow">
+                                                                        <th class="text-center">Sessional-I #</th>
+                                                                        <th class="text-center">Weightage</th>
+                                                                        <th class="text-center">Obtained Marks</th>
+                                                                        <th class="text-center">Total Marks</th>
+                                                                        <th class="text-center">Average</th>
+                                                                        <th class="text-center">Standard Deviation</th>
+                                                                        <th class="text-center">Minimum</th>
+                                                                        <th class="text-center">Maximum</th>
+
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">7.7 </td>
+                                                                                    <td class="text-center ObtMarks">7</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">7.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">7 </td>
+                                                                            </tr>
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 2</td>
+                                                                                <td class="text-center weightage">7.7 </td>
+                                                                                    <td class="text-center ObtMarks">7</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">7.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">7 </td>
+                                                                            </tr>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+                                                                                    <td class="text-center totalColweightage">77</td>
+                                                                                    <td class="text-center totalColObtMarks">77.77</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+
+                                                                        </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                        <div class="card">
+                                            <div class="card-header" id="Grand Total Marks">
+                                                <h5 class="mb-0">
+                                                    <button class="btn btn-link" data-toggle="collapse" data-target="#SS7777-Grand_Total_Marks" aria-expanded="false" aria-controls="SS7777-Grand Total Marks" onclick="ftn_calculateMarks('7777');">
+                                                        Grand Total Marks
+                                                    </button>
+                                                </h5>
+                                            </div>
+                                            <div id="SS7777-Grand_Total_Marks" class="collapse" data-parent="#accordion" aria-labelledby="Grand Total Marks">
+                                                <div class="card-body">
+                                                    <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive" width="100%">
+                                                        <thead>
+                                                            <tr class="titlerow">
+
+                                                                <th class="text-center">Total Marks</th>
+                                                                <th class="text-center">Obtained Marks</th>
+                                                                <th class="text-center">Class Average</th>
+                                                                <th class="text-center">Min</th>
+                                                                <th class="text-center">Max</th>
+                                                                <th class="text-center">Std Dev</th>
+
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody></tbody>
+                                                        <tfoot>
+                                                        </tfoot>
+                                                    </table>
+
+
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                </div>
+                            </div>
+                            <div class="tab-pane" id="SS7777">
+                                <div id="accordion">
+                                    <h5>SS7777-Understanding of Holy Quran II/Introduction to Major World Religions II (BSE-3C)</h5>
+                                                <div class="card">
+                                                    <div class="card-header" id="Quiz">
+                                                        <h5 class="mb-0">
+                                                            <button class="btn btn-link" data-toggle="collapse" data-target="#SS7777-Quiz" aria-expanded="true" aria-controls="SS7777-Quiz">
+                                                                Quiz
+                                                            </button>
+                                                        </h5>
+                                                    </div>
+                                                        <div id="SS7777-Quiz" class="collapse show" data-parent="#accordion" aria-labelledby="Quiz">
+                                                            <div class="card-body">
+                                                                <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive">
+                                                                    <thead>
+                                                                        <tr class="titlerow">
+                                                                            <th class="text-center">Quiz #</th>
+                                                                            <th class="text-center">Weightage</th>
+                                                                            <th class="text-center">Obtained Marks</th>
+                                                                            <th class="text-center">Total Marks</th>
+                                                                            <th class="text-center">Average</th>
+                                                                            <th class="text-center">Standard Deviation</th>
+                                                                            <th class="text-center">Minimum</th>
+                                                                            <th class="text-center">Maximum</th>
+
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+
+                                                                            <tr class="calculationrow">
+                                                                                <td class="text-center"> 1</td>
+                                                                                <td class="text-center weightage">7 </td>
+                                                                                    <td class="text-center ObtMarks">7</td>
+                                                                                <td class="text-center GrandTotal">77</td>
+                                                                                    <td class="text-center AverageMarks">7.77</td>
+                                                                                                                                                                    <td class="text-center StdDev"> </td>
+                                                                                                                                                                    <td class="text-center MinMarks">7  </td>
+                                                                                                                                                                    <td class="text-center MaxMarks">77 </td>
+                                                                            </tr>
+                                                                        <tr class="totalColumn_7777">
+                                                                            <td class="text-center">Total</td>
+                                                                                    <td class="text-center totalColweightage">7</td>
+                                                                                    <td class="text-center totalColObtMarks">7</td>
+                                                                            <td class="text-center totalColGrandTotal"></td>
+                                                                            <td class="text-center totalColAverageMarks"></td>
+                                                                            <td class="text-center totalColStdDev"></td>
+                                                                            <td class="text-center totalColMinMarks"></td>
+                                                                            <td class="text-center totalColMaxMarks"></td>
+
+                                                                        </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                </div>
+                                        <div class="card">
+                                            <div class="card-header" id="Grand Total Marks">
+                                                <h5 class="mb-0">
+                                                    <button class="btn btn-link" data-toggle="collapse" data-target="#SS7777-Grand_Total_Marks" aria-expanded="false" aria-controls="SS7777-Grand Total Marks" onclick="ftn_calculateMarks('7777');">
+                                                        Grand Total Marks
+                                                    </button>
+                                                </h5>
+                                            </div>
+                                            <div id="SS7777-Grand_Total_Marks" class="collapse" data-parent="#accordion" aria-labelledby="Grand Total Marks">
+                                                <div class="card-body">
+                                                    <table class="sum_table table m-table m-table--head-bg-info table-bordered table-striped table-responsive" width="100%">
+                                                        <thead>
+                                                            <tr class="titlerow">
+
+                                                                <th class="text-center">Total Marks</th>
+                                                                <th class="text-center">Obtained Marks</th>
+                                                                <th class="text-center">Class Average</th>
+                                                                <th class="text-center">Min</th>
+                                                                <th class="text-center">Max</th>
+                                                                <th class="text-center">Std Dev</th>
+
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody></tbody>
+                                                        <tfoot>
+                                                        </tfoot>
+                                                    </table>
+
+
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                </div>
+                            </div>
+                </div>
+            </div>
+        </div>
+<script>
+    var totals = [0, 0, 0, 0, 0, 0];
+
+
+
+    function ftn_calculateMarks(id) {
+       
+        // var temp=id.substring(2,2);
+        var temp = "totalColumn_" + id;
+        var tempGrandTotal = 0;
+        var tempGrandObtMarks = 0;
+
+        $('.sum_table').each(function (t) {
+
+            $(this).find("." + temp).each(function () {
+                $(this).find(".totalColweightage").each(function () {
+                    if ($(this).text() != "") {
+                        tempGrandTotal += parseFloat($(this).text());
+                    }
+                });
+                if ((!isNaN(tempGrandTotal) && tempGrandTotal != 0)) {
+                    // $(this).find(".GrandtotalColMarks_" + id).html(tempGrandTotal.toFixed(2));
+                    $("#GrandtotalColMarks_" + id).html(tempGrandTotal.toFixed(2));
+                }
+
+                //$(this).find(".totalColObtMarks").each(function () {
+                //    if ($(this).text() != "") {
+                //        tempGrandObtMarks += parseFloat($(this).text());
+                //    }
+                //});
+                //if ((!isNaN(tempGrandObtMarks) && tempGrandObtMarks != 0)) {
+                //    // $(this).find(".GrandtotalObtMarks_" + id).html(tempGrandObtMarks.toFixed(2));
+                //    $("#GrandtotalObtMarks_" + id).html(tempGrandObtMarks.toFixed(2));
+                //}
+
+            });
+        });
+        var sem = document.getElementById("SemId");
+        var SemID = sem.options[sem.selectedIndex].value;
+
+        $.ajax
+            ({
+                type: "POST",
+                url: "../Student/GetClassAvg",
+                data: {
+                    CourseId: id,
+                    SemID: SemID
+                },
+                success: function (data) {
+
+                    for (var i = 0; i < data.length; i++) {
+
+                        //$("#GrandtotalClassAvg_" + id).html(floorFigure(data[i].CLASS_AVG,2));
+                        //$("#GrandtotalClassMax_" + id).html(floorFigure(data[i].CLASS_MAX,2));
+                        //$("#GrandtotalClassMin_" + id).html(floorFigure(data[i].CLASS_MIN,2));
+                        //$("#GrandtotalClassStdDev_" + id).html(floorFigure(data[i].CLASS_STD,2));
+                        //$("#GrandtotalObtMarks_" + id).html(floorFigure(data[i].TOT_WEIGHT,2));
+                        $("#GrandtotalClassAvg_" + id).html(data[i].CLASS_AVG.toFixed(2));
+                        $("#GrandtotalClassMax_" + id).html(data[i].CLASS_MAX.toFixed(2));
+                        $("#GrandtotalClassMin_" + id).html(data[i].CLASS_MIN.toFixed(2));
+                        $("#GrandtotalClassStdDev_" + id).html(data[i].CLASS_STD.toFixed(2));
+                        $("#GrandtotalObtMarks_" + id).html(data[i].TOT_WEIGHT.toFixed(2));
+                    }
+
+                },
+                error: function (e) {
+
+                }
+            });
+    }
+    function floorFigure(figure, decimals) {
+        if (!decimals) decimals = 2;
+        var d = Math.pow(10, decimals);
+        return (parseInt(figure * d) / d).toFixed(decimals);
+    };
+</script>
+
+                </div>
+            </div>
+        </div>
+        <!-- end:: Body -->
+        <!-- begin::Footer -->
+        <footer class="m-grid__item m-footer ">
+            <div class="m-container m-container--fluid m-container--full-height m-page__container">
+                <div class="m-stack m-stack--flex-tablet-and-mobile m-stack--ver m-stack--desktop">
+                    <div class="m-stack__item m-stack__item--left m-stack__item--middle m-stack__item--last">
+                        <span class="m-footer__copyright">
+                            7777 &copy; All rights reserved
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </footer>
+        <!-- end::Footer -->
+    </div>
+    <!-- end:: Page -->
+    <!-- begin::Scroll Top -->
+    <div class="m-scroll-top m-scroll-top--skin-top" data-toggle="m-scroll-top" data-scroll-offset="500" data-scroll-speed="300">
+        <i class="la la-arrow-up"></i>
+    </div>
+    <!-- end::Scroll Top -->
+    <!-- begin::Quick Nav -->
+    <!-- begin::Quick Nav -->
+    <!--begin::Base Scripts -->
+
+    <script src="/Assets/demo/demo3/base/scripts.bundle.js" type="text/javascript"></script>
+    <!--end::Base Scripts -->
+    <!--begin::Page Vendors -->
+    <script src="/Assets/vendors/custom/fullcalendar/fullcalendar.bundle.js" type="text/javascript"></script>
+    <!--end::Page Vendors -->
+    <!--begin::Page Snippets -->
+    <script src="/Assets/demo/demo3/base/bootstrap-notify.js" type="text/javascript"></script>
+    <!--end::Page Snippets -->
+    <script>
+       
+    </script>
+</body>
+<!-- end::Body -->
+</html>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        $("#overlay23").hide();
+    });
+
+    window.addEventListener("beforeunload", function () {
+        $("#overlay23").show();
+    });
+    function showLoader() {
+        $("#overlay23").removeClass("d-none");
+    }
+
+    function hideLoader() {
+        $("#overlay23").addClass("d-none");
+    }
+   
+    $(function () {
+        $(this).bind("contextmenu", function (e) {
+            e.preventDefault();
+        });
+    });
+    if (!window.console) window.console = {};
+    var methods = ["log", "debug", "warn", "info", "dir", "dirxml", "trace", "profile"];
+    for (var i = 0; i < methods.length; i++) {
+        console[methods[i]] = function () { };
+    }
+    document.onkeydown = function (e) {
+        if (event.keyCode == 123) {
+            return false;
+        }
+        if (e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) {
+            return false;
+        }
+        if (e.ctrlKey && e.shiftKey && e.keyCode == 'C'.charCodeAt(0)) {
+            return false;
+        }
+        if (e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) {
+            return false;
+        }
+        if (e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) {
+            return false;
+        }
+    }
+</script>

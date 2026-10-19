@@ -1,0 +1,908 @@
+<html lang="en" class="wf-roboto-n3-active wf-roboto-n4-active wf-roboto-n5-active wf-roboto-n6-active wf-roboto-n7-active wf-montserrat-n7-active wf-montserrat-n5-active wf-montserrat-n3-active wf-montserrat-n4-active wf-montserrat-n6-active wf-active"><style>html, body { background-color: #777777 !important; }
+.m-body { background-color: #777777 !important; }
+.m-wrapper { filter: invert(1) hue-rotate(180deg) !important; }
+.m-wrapper img, .m-wrapper picture, .m-wrapper video,
+.m-wrapper canvas,
+.m-wrapper svg { filter: invert(1) hue-rotate(180deg) !important; }
+.m-footer { filter: invert(1) hue-rotate(180deg) !important; }
+.m-footer img, .m-footer picture, .m-footer video,
+.m-footer canvas, .m-footer svg {
+  filter: invert(1) hue-rotate(180deg) !important; }
+.m-page--fluid .m-header, .m-page--wide .m-header {
+  background-color: #355C7D !important; }
+.m-header-head { background-color: #355C7D !important; }
+.m-topbar { background-color: transparent !important;
+  box-shadow: none !important; }
+body.m-header--fixed-mobile .m-topbar { top: -51px !important; }
+[id^="overlay"] { background-color: rgba(8, 17, 23, 0.82) !important; }
+.loader-box {
+  background: #77777b !important;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.6) !important; }
+.m-scroll-top { background: #355C7D !important;
+  box-shadow: 0 0 15px 1px rgba(0, 0, 0, 0.5) !important; }
+.m-scroll-top > i { color: #ffffff !important; }
+.m-aside-left-close { display: none !important; }
+.m-login.m-login--1 { background-color: #777777 !important;
+  color: #dcdcdc !important; }
+.m-login.m-login--1 h5,
+.m-login.m-login--1 .m-login__title,
+.m-login.m-login--1 .m-login__desc,
+.m-login.m-login--1 .m-form__help,
+.m-login.m-login--1 .m-checkbox { color: #dcdcdc !important; }
+.m-login.m-login--1 .form-control {
+  background-color: #1a1a1a !important;
+  border-color: #3a3a3a !important;
+  color: #ffffff !important; }
+.m-login.m-login--1 .form-control:focus {
+  background-color: #1a1a1a !important;
+  border-color: #7777dd !important;
+  box-shadow: none !important; }
+.m-login.m-login--1 .form-control::placeholder {
+  color: #8a8a8a !important; }
+.m-login.m-login--1 .form-control:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 7777px #1a1a1a inset !important;
+  -webkit-text-fill-color: #ffffff !important; }
+.m-login.m-login--1 .input-group-addon {
+  background-color: #1a1a1a !important;
+  border-color: #3a3a3a !important;
+  color: #b9c2c9 !important; }
+.m-login.m-login--1 .m-link { color: #8c9eff !important; }
+.m-login.m-login--1 .m-login__content {
+  box-shadow: inset 0 0 0 7777px rgba(0, 0, 0, 0.55) !important; }
+.m-login.m-login--1 .cf-turnstile,
+.m-login.m-login--1 .g-recaptcha {
+  filter: invert(1) hue-rotate(180deg) !important; }</style><!-- begin::Head --><head>
+    <style>
+        #overlay23 {
+            position: fixed;
+            display: none; /* hidden by default */
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(255,255,255,0.6);
+            z-index: 7777; /* ABOVE bootstrap modal */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .loader-box {
+            background: white;
+            padding: 25px 40px;
+            border-radius: 6px;
+            text-align: center;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+        }
+    </style>
+    <meta charset="utf-8">
+    <title>
+        Flex | Student
+    </title>
+    <meta name="description" content="Latest updates and statistic charts">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <!--begin::Web font -->
+    <script src="https://ajax.googleapis.com/ajax/libs/webfont/1.6.16/webfont.js"></script>
+    <script src="/Content/jquery.js"></script>
+    
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Montserrat:300,400,500,600,700%7CRoboto:300,400,500,600,700" media="all"><script>
+        WebFont.load({
+            google: { "families": ["Montserrat:300,400,500,600,700", "Roboto:300,400,500,600,700"] },
+            active: function () {
+                sessionStorage.fonts = true;
+            }
+        });
+    </script>
+    <!--end::Web font -->
+    <!--begin::Base Styles -->
+    <!--begin::Page Vendors -->
+    <link href="/Assets/vendors/custom/fullcalendar/fullcalendar.bundle.css" rel="stylesheet" type="text/css">
+    <!--end::Page Vendors -->
+    <link href="/Assets/vendors/base/vendors.bundle.css" rel="stylesheet" type="text/css">
+    <link href="/Assets/demo/demo3/base/style.bundle.css" rel="stylesheet" type="text/css">
+    <!--end::Base Styles -->
+    <link rel="shortcut icon" href="/Assets/demo/demo3/media/img/logo/favicon.ico">
+    <link href="/Assets/CustomCss.css" rel="stylesheet">
+    <script src="/Assets/vendors/base/vendors.bundle.js" type="text/javascript"></script><style type="text/css">.im-caret {
+	-webkit-animation: 1s blink step-end infinite;
+	animation: 1s blink step-end infinite;
+}
+
+@keyframes blink {
+	from, to {
+		border-right-color: black;
+	}
+	50% {
+		border-right-color: transparent;
+	}
+}
+
+@-webkit-keyframes blink {
+	from, to {
+		border-right-color: black;
+	}
+	50% {
+		border-right-color: transparent;
+	}
+}
+
+.im-static {
+	color: grey;
+}
+</style>
+</head>
+<!-- end::Head -->
+<!-- end::Body -->
+<body class="m-page--fluid m--skin- m-content--skin-light2 m-header--fixed m-header--fixed-mobile m-aside-left--enabled m-aside-left--skin-dark m-aside-left--fixed m-aside-left--offcanvas m-footer--push m-aside--offcanvas-default">
+    <div id="overlay23" class="" style="display: none;">
+        <div class="loader-box">
+            Loading, please wait...
+            <br><br>
+            <img src="/Content/Loader.gif" style="height:20px;">
+        </div>
+    </div>
+    <!-- begin:: Page -->
+    <div class="m-grid m-grid--hor m-grid--root m-page">
+        <!-- BEGIN: Header -->
+        <header class="m-grid__item m-header" data-minimize-offset="200" data-minimize-mobile-offset="200">
+            <div class="m-container m-container--fluid m-container--full-height">
+                <div class="m-stack m-stack--ver m-stack--desktop">
+                    <!-- BEGIN: Brand -->
+                    <div class="m-stack__item m-brand  m-brand--skin-dark ">
+                        <div class="m-stack m-stack--ver m-stack--general">
+                            <div class="m-stack__item m-stack__item--middle m-stack__item--center m-brand__logo">
+                                <a href="/Home" class="m-brand__logo-wrapper">
+                                    <img class="img-responsive" src="../../Assets/demo/demo3/media/img/logo/favicon.ico" alt="">
+                                </a>
+                            </div>
+                            <div class="m-stack__item m-stack__item--middle m-brand__tools">
+                                <!-- BEGIN: Responsive Aside Left Menu Toggler -->
+                                <div id="m_aside_left_offcanvas_toggle" class="m-brand__icon m-brand__toggler m-brand__toggler--left m--visible-tablet-and-mobile-inline-block">
+                                    <span></span>
+                                </div>
+                                <!-- END -->
+                                <!-- BEGIN: Responsive Header Menu Toggler -->
+                                
+                                <!-- END -->
+                                <!-- BEGIN: Topbar Toggler -->
+                                <a id="m_aside_header_topbar_mobile_toggle" href="javascript:;" class="m-brand__icon m--visible-tablet-and-mobile-inline-block">
+                                    <i class="flaticon-more"></i>
+                                </a>
+                                <!-- BEGIN: Topbar Toggler -->
+                            </div>
+                        </div>
+                    </div>
+                    <!-- END: Brand -->
+                    <div class="m-stack__item m-stack__item--fluid m-header-head" style="text-align: center;color:white; vertical-align: bottom;">
+                        <div class=" align-items-center">
+                            <div class="mr-auto">
+                                <h5 class="m-subheader__title m-subheader__title--separator">
+                                    Student Profile
+                                </h5>
+                                <label>  
+
+    Home
+</label>
+                            </div>
+
+                        </div>
+                    </div>
+                    <div class="m-stack__item m-stack__item--fluid m-header-head" id="m_header_nav">
+                        <!-- BEGIN: Topbar -->
+                        <div id="m_header_topbar" class="m-topbar  m-stack m-stack--ver m-stack--general">
+                            <div class="m-stack__item m-topbar__nav-wrapper">
+                                <ul class="m-topbar__nav m-nav m-nav--inline">
+
+                                    <li class="m-nav__item m-topbar__user-profile m-topbar__user-profile--img m-dropdown m-dropdown--medium m-dropdown--arrow m-dropdown--header-bg-fill m-dropdown--align-right m-dropdown--mobile-full-width m-dropdown--skin-light" data-dropdown-toggle="click">
+                                        <a href="#" class="m-nav__link m-dropdown__toggle">
+                                                    <span class="m-topbar__welcome m--hidden-tablet m--hidden-mobile">
+                                                        Hello Mr,&nbsp;
+                                                    </span>
+                                                <span class="m-topbar__username m--hidden-tablet m--hidden-mobile m--padding-right-15">
+                                                    <span class="m-link">
+                                                        [redacted]
+                                                    </span>
+                                                </span>
+                                                <span class="m-topbar__userpic">
+                                                        <img src="/Login/GetImage">
+                                                </span>
+                                        </a>
+                                        <div class="m-dropdown__wrapper">
+                                            <span class="m-dropdown__arrow m-dropdown__arrow--right m-dropdown__arrow--adjust"></span>
+                                            <div class="m-dropdown__inner" style="width:70%; margin:auto;">
+                                                
+                                                <div class="m-dropdown__body">
+                                                    <div class="m-dropdown__content">
+                                                        <ul class="m-nav m-nav--skin-light">
+                                                            <li class="m-nav__item">
+                                                                <a href="/" class="m-nav__link">
+                                                                    <i class="m-nav__link-icon flaticon-profile"></i>
+                                                                    <span class="m-nav__link-title">
+                                                                        <span class="m-nav__link-wrap">
+                                                                            <span class="m-nav__link-text">
+                                                                                My Profile
+                                                                            </span>
+                                                                        </span>
+                                                                    </span>
+                                                                </a>
+                                                            </li>
+                                                            <li class="m-nav__item">
+                                                                <a href="/Student/ChangePassword" class="m-nav__link">
+                                                                    <i class="m-nav__link-icon flaticon-lock"></i>
+                                                                    <span class="m-nav__link-text">
+                                                                        Change Password
+                                                                    </span>
+                                                                </a>
+                                                            </li>
+                                                            <li class="m-nav__separator m-nav__separator--fit"></li>
+                                                            <li class="m-nav__item text-center">
+                                                                <a href="/Login/logout" class="btn btn-brand m-btn m-btn--custom m-btn--icon m-btn--pill m-btn--air">
+                                                                    <span>
+                                                                        <i class="la la-power-off"></i>
+                                                                        <span>
+                                                                            Logout
+                                                                        </span>
+                                                                    </span>
+                                                                </a>
+                                                            </li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <!-- END: Topbar -->
+                    </div>
+                </div>
+            </div>
+        </header>
+        <!-- END: Header -->
+        <!-- begin::Body -->
+        <div class="m-grid__item m-grid__item--fluid m-grid m-grid--ver-desktop m-grid--desktop m-body" style="padding-top: 111px;">
+            <!-- BEGIN: Left Aside -->
+            <button class="m-aside-left-close m-aside-left-close--skin-dark" id="m_aside_left_close_btn">
+                <i class="la la-close"></i>
+            </button>
+            <div id="m_aside_left" class="m-grid__item	m-aside-left  m-aside-left--skin-dark">
+                <!-- BEGIN: Aside Menu -->
+                <div id="m_ver_menu" class="m-aside-menu  m-aside-menu--skin-dark m-aside-menu--submenu-skin-dark m-aside-menu--dropdown " ata-menu-vertical="true" data-menu-dropdown="true" data-menu-scrollable="true" data-menu-dropdown-timeout="500">
+                    <ul class="m-menu__nav  m-menu__nav--dropdown-submenu-arrow ">
+
+                            <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true">
+                                <a href="/?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link ">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon la la-home"></i>
+                                    <span class="m-menu__link-text">
+                                        Home
+                                    </span>
+                                </a>
+                            </li>
+                        
+                            <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true">
+                                <a href="/Student/CourseRegistration?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-list-3"></i>
+                                    <span class="m-menu__link-text">
+                                        Course Registration
+                                    </span>
+                                </a>
+                            </li>
+
+
+                                <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true">
+                                    <a href="/Student/StudentAttendance?semid=77777" class="m-menu__link m-menu__toggle">
+                                        <span class="m-menu__item-here"></span>
+                                        <i class="m-menu__link-icon flaticon-list-2"></i>
+                                        <span class="m-menu__link-text">
+                                            Attendance
+                                        </span>
+                                    </a>
+                                </li>
+                                                    <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/StudentMarks?semid=77777" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-edit-1"></i>
+                                    <span class="m-menu__link-text">
+                                        Marks
+                                    </span>
+                                </a>
+                            </li>
+
+                                <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                    <a href="/Student/PrintAdmitCard?semid=77777" class="m-menu__link m-menu__toggle">
+                                        <span class="m-menu__item-here"></span>
+                                        <i class="m-menu__link-icon flaticon-edit-1"></i>
+                                        <span class="m-menu__link-text">
+                                            Print Admit Card
+                                        </span>
+                                    </a>
+                                </li>
+
+
+                            <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/StudentPloRpt" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-time"></i>
+                                    <span class="m-menu__link-text">
+                                        Marks PLO Report
+                                    </span>
+                                </a>
+                            </li>
+
+                        
+                            <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/Transcript?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-folder-1"></i>
+                                    <span class="m-menu__link-text">
+                                        Transcript
+                                    </span>
+                                </a>
+                            </li>
+                                                        <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                    <a href="/Student/Challan?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link m-menu__toggle">
+                                        <span class="m-menu__item-here"></span>
+                                        <i class="m-menu__link-icon flaticon-coins"></i>
+                                        <span class="m-menu__link-text">
+                                            Fee Challan
+                                        </span>
+                                    </a>
+                                </li>
+                                                        <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                    <a href="/ConsolidatedFeeReport/ConsolidatedStdFeeReport?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link m-menu__toggle">
+                                        <span class="m-menu__item-here"></span>
+                                        <i class="m-menu__link-icon flaticon-coins"></i>
+                                        <span class="m-menu__link-text">
+                                            Fee Details
+                                        </span>
+                                    </a>
+                                </li>
+                                                    <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/CourseFeedback?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-file"></i>
+                                    <span class="m-menu__link-text">
+                                        Course Feedback
+                                    </span>
+                                </a>
+                            </li>
+                                                    <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/RetakeRequest?semid=77777&amp;EvaltypeId=5" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-file"></i>
+                                    <span class="m-menu__link-text">
+                                        Retake Exam Request
+                                    </span>
+                                </a>
+                            </li>
+                                                    <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/CourseWithdraw?semid=77777" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-file"></i>
+                                    <span class="m-menu__link-text">
+                                        Course Withdraw
+                                    </span>
+                                </a>
+                            </li>
+                                                    <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/GradeChangeRequest?semid=77777" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-file"></i>
+                                    <span class="m-menu__link-text">
+                                        Grade Change Request
+                                    </span>
+                                </a>
+                            </li>
+
+                            <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                <a href="/Student/TentativeStudyPlan?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link m-menu__toggle">
+                                    <span class="m-menu__item-here"></span>
+                                    <i class="m-menu__link-icon flaticon-time"></i>
+                                    <span class="m-menu__link-text">
+                                        Tentative Study Plan
+                                    </span>
+                                </a>
+                            </li>
+
+                                <li class="m-menu__item  m-menu__item--submenu" aria-haspopup="true" data-redirect="true">
+                                    <a href="/Student/GradeReport?dump=6sk6fbxLt%2FEklPggbZf5Rg%3D%3D" class="m-menu__link m-menu__toggle">
+                                        <span class="m-menu__item-here"></span>
+                                        <i class="m-menu__link-icon flaticon-time"></i>
+                                        <span class="m-menu__link-text">
+                                            Grade Report
+                                        </span>
+                                    </a>
+                                </li>
+
+                    </ul>
+                </div>
+                <!-- END: Aside Menu -->
+            </div>
+            <!-- END: Left Aside -->
+
+            <div class="m-grid__item m-grid__item--fluid m-wrapper">
+
+                <div class="m-content">
+                    
+<script src="/Assets/amcharts/amcharts.js" type="text/javascript"></script>
+<script src="/Assets/amcharts/serial.js" type="text/javascript"></script>
+<script src="/Assets/amcharts/plugins/responsive/responsive.min.js"></script>
+<script>
+    /**
+ * Lazy-init code (relies on jQuery)
+ */
+
+    // save the real makeChart function for later
+    AmCharts.lazyLoadMakeChart = AmCharts.makeChart;
+
+    // override makeChart function
+    AmCharts.makeChart = function (a, b, c) {
+
+        // set scroll events
+        jQuery(document).on('scroll load touchmove', handleScroll);
+        jQuery(window).on('load', handleScroll);
+
+        function handleScroll() {
+            var $ = jQuery;
+            if (true === b.lazyLoaded)
+                return;
+            var hT = $('#' + a).offset().top,
+              hH = $('#' + a).outerHeight() / 2,
+              wH = $(window).height(),
+              wS = $(window).scrollTop();
+            if (wS > (hT + hH - wH)) {
+                b.lazyLoaded = true;
+                AmCharts.lazyLoadMakeChart(a, b, c);
+                return;
+            }
+        }
+
+        // Return fake listener to avoid errors
+        return {
+            addListener: function () { }
+        };
+    };
+    //window.location.href = '/Student/SemResultChoice'
+</script>
+<div class="row">
+    <div class="col-lg-12">
+        <div class="m-portlet m-portlet--responsive-mobile m-portlet--brand m-portlet--head-solid-bg m-portlet--bordered">
+            <div class="m-portlet__head">
+                <div class="m-portlet__head-caption">
+                    <div class="m-portlet__head-title">
+                        <span class="m-portlet__head-icon">
+                            <i class="la la-building"></i>
+                        </span>
+                        <h3 class="m-portlet__head-text">[redacted]</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="m-portlet__body">
+                    <div class="row">
+                        <div class="col-md-4">
+
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                        </div>
+                        <div class="col-md-4">
+                                    <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+
+
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                        </div>
+                        <div class="col-md-4">
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                        </div>
+                    </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-12">
+        <div class="m-portlet m-portlet--responsive-mobile m-portlet--brand m-portlet--head-solid-bg m-portlet--bordered">
+            <div class="m-portlet__head">
+                <div class="m-portlet__head-caption">
+                    <div class="m-portlet__head-title">
+                        <span class="m-portlet__head-icon">
+                            <i class="la la-building"></i>
+                        </span>
+                        <h3 class="m-portlet__head-text">
+                            Academic Calendar
+                        </h3>
+                    </div>
+                </div>
+            </div>
+            <div class="m-portlet__body">
+                    <div class="row">
+                        <div class="col-md-4">
+
+                                <p><span class="m--font-boldest">Registration: </span><span>14-Aug-7777 to 30-Aug-7777 </span></p>
+                                                            <p><span class="m--font-boldest">Online Feedback #1: </span><span>14-Sep-7777 to 23-Sep-7777</span></p>
+
+                        </div>
+                        <div class="col-md-4">
+                                <p><span class="m--font-boldest">Classes: </span><span>17-Aug-7777 to 11-Dec-7777 </span></p>
+                                                            <p><span class="m--font-boldest">Online Feedback #2: </span><span>Updated soon</span></p>
+                        </div>
+                        <div class="col-md-4">
+                                <p><span class="m--font-boldest">Online Withdraw request: </span><span>22-Aug-7777 to 11-Dec-7777</span></p>
+                            <p><span class="m--font-boldest">Online Retake request: </span><span>After Mid Exam </span>/<span> After Final Exam</span></p>
+
+                        </div>
+                    </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-lg-12">
+        <div class="m-portlet m-portlet--responsive-mobile m-portlet--brand m-portlet--head-solid-bg m-portlet--bordered">
+            <div class="m-portlet__head">
+                <div class="m-portlet__head-caption">
+                    <div class="m-portlet__head-title">
+                        <span class="m-portlet__head-icon">
+                            <i class="la la-black-tie"></i>
+                        </span>
+                        <h3 class="m-portlet__head-text">[redacted]</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="m-portlet__body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+<p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                        </div>
+                        <div class="col-md-4">
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                        </div>
+                        <div class="col-md-4">
+                            <p><span class="m--font-boldest">[redacted]</span><span></span></p>
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                           
+                        </div>
+                    </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-lg-12">
+        <div class="m-portlet m-portlet--responsive-mobile m-portlet--brand m-portlet--head-solid-bg m-portlet--bordered">
+            <div class="m-portlet__head">
+                <div class="m-portlet__head-caption">
+                    <div class="m-portlet__head-title">
+                        <span class="m-portlet__head-icon">
+                            <i class="la la-mobile-phone"></i>
+                        </span>
+                        <h3 class="m-portlet__head-text">[redacted]</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="m-portlet__body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5><strong>[redacted]</strong></h5>
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                            <p><span class="m--font-boldest">[redacted]</span><span></span></p>
+                            <p><span class="m--font-boldest">[redacted]</span><span></span></p>
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                        </div>
+                        <div class="col-md-6">
+                            <h5><strong>[redacted]</strong></h5>
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                            <p><span class="m--font-boldest">[redacted]</span><span></span></p>
+                            <p><span class="m--font-boldest">[redacted]</span><span></span></p>
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                            <p><span class="m--font-boldest">[redacted]</span><span>[redacted]</span></p>
+                        </div>
+                    </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-lg-12">
+        <div class="m-portlet m-portlet--responsive-mobile m-portlet--brand m-portlet--head-solid-bg m-portlet--bordered">
+            <div class="m-portlet__head">
+                <div class="m-portlet__head-caption">
+                    <div class="m-portlet__head-title">
+                        <span class="m-portlet__head-icon">
+                            <i class="la la-group"></i>
+                        </span>
+                        <h3 class="m-portlet__head-text">[redacted]</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="m-portlet__body">
+                    <div class="row">
+                        <div class="col-lg-12">
+<form action="/Home/UpdateCNIC" method="post">                                <table class="table m-table m-table--head-bg-metal table-responsive">
+                                    <thead>
+                                        <tr>
+                                            <th>[redacted]</th>
+                                            <th>[redacted]</th>
+                                            <th>[redacted]</th>
+                                            <th>[redacted]</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                            <tr>
+                                                <td class="m--hide"><input id="FamilyId" name="FamilyId" type="text" value="1"></td>
+                                                <td>[redacted]</td>
+                                                    <td><label for="Ahmad_Waqas" id="name" name="name">[redacted]</label></td>
+                                                <td class="CNIC">
+                                                    
+                                                    
+                                                </td>
+                                                    <td class="text-center"> <input checked="checked" id="WHTax" name="WHTax" type="checkbox" value="true"><input name="WHTax" type="hidden" value="false"></td>
+                                            </tr>
+                                    </tbody>
+                                </table>
+</form>                        </div>
+                    </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="NotificationDetail" class="modal fade" role="dialog">
+    <div class="modal-dialog modal-lg">
+        <!-- Modal content-->
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title">Notification </h4>
+                <button type="button" class="close" data-dismiss="modal">×</button>
+
+            </div>
+            <div class="modal-body">
+
+                <div class="m-alert m-alert--icon m-alert--icon-solid m-alert--outline alert alert-info alert-dismissible fade show" role="alert">
+                    <div class="m-alert__icon">
+                        <i class="flaticon-exclamation-1"></i>
+                        <span></span>
+                    </div>
+                    <div class="m-alert__text">
+                        <strong>Note! </strong>   
+                    </div>
+
+                </div>
+
+                
+                
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div id="Std_SpecDetail" class="modal fade" role="dialog">
+    <div class="modal-dialog modal-lg">
+        <!-- Modal content-->
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title">Set Specialization </h4>
+                <button type="button" class="close" data-dismiss="modal">×</button>
+
+            </div>
+            <div class="modal-body">
+
+                <div class="m-alert m-alert--icon m-alert--icon-solid m-alert--outline alert alert-info alert-dismissible fade show" role="alert" id="DataErrormsgdiv_StdSpec" style="display:none;">
+                    <div class="m-alert__icon">
+                        <i class="flaticon-exclamation-1"></i>
+                        <span></span>
+                    </div>
+                    <div class="m-alert__text">
+                        <strong>Note!</strong>
+                        <label id="lbErrormsgStdSpec"></label>
+                    </div>
+                    <div class="m-alert__close">
+                        <button type="button" class="close" data-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-12 text-center">
+
+                        <select class="m-dropdown__toggle btn btn-brand dropdown-toggle" id="StdSpecId" name="StdSpecId"><option selected="selected" value="-2">Select Specialization</option>
+</select>
+                        
+
+                    </div>
+
+                </div>
+                
+
+            </div>
+            <div class="modal-footer">
+                <input type="button" class="btn btn - primary btn - sm" value="Submit Request" onclick="fn_SaveStdSpec();">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+
+
+<script>
+
+    $(document).ready(function (e) {
+
+  
+
+        var Alert_Check = 'False';
+
+        if (Alert_Check != "False") {
+            $('#NotificationDetail').modal("show");
+        }
+        else {
+            $('#NotificationDetail').modal("hide");
+        }
+
+    });
+
+    function fn_SaveStdSpec() {
+
+        var Std_SpecId = $("#StdSpecId option:selected").val();
+
+        if (Std_SpecId == null || Std_SpecId == "" || Std_SpecId == "-2") {
+            // $('#Std_SpecDetail').modal('hide');
+            $("#lbErrormsgStdSpec").text("Kindly Select Specilization");
+            $("#DataErrormsgdiv_StdSpec").show();
+        }
+        else {
+
+            $.ajax({
+                type: "POST",
+                url: "../Home/AjxUpdate_StdSpec",
+                dataType: "json",
+                traditional: true,
+                data: { //Passing data
+                    Std_SpecId: Std_SpecId,
+
+                },
+                success: function (data) {
+
+
+                    if (data.msg == "done") {
+
+
+                        $("#lbErrormsgStdSpec").text("Specialization saved successfully");
+                        $("#DataErrormsgdiv_StdSpec").hide();
+
+                        $('#Std_SpecDetail').modal('hide');
+
+                        var messg_secrit = data.secrit;
+                        window.location = "../Home/Index?dump=" + messg_secrit;
+
+                    }
+                    else if (data.msg == "Notfound") {
+                        var messg_secrit = data.secrit;
+
+                        $("#lbErrormsgStdSpec").text("Roll number not found");
+                        $("#DataErrormsgdiv_StdSpec").hide();
+
+                    }
+                    else if (data.msg == "ChangeSpec") {
+                        var messg_secrit = data.secrit;
+
+                        $("#lbErrormsgStdSpec").text("Manaully change specilization not allowed");
+                        $("#DataErrormsgdiv_StdSpec").hide();
+
+                    }
+                    else if (data.msg == "expired") {
+                        var messg_secrit = data.secrit;
+
+                        $('#Std_SpecDetail').modal('hide');
+
+                        window.location = "../Login/Index";
+
+                    }
+                },
+                error: function (result1) {
+                    alert("Error:" + result1.responseText);
+                }
+            });
+        }
+
+    }
+
+</script>
+
+                </div>
+            </div>
+        </div>
+        <!-- end:: Body -->
+        <!-- begin::Footer -->
+        <footer class="m-grid__item m-footer ">
+            <div class="m-container m-container--fluid m-container--full-height m-page__container">
+                <div class="m-stack m-stack--flex-tablet-and-mobile m-stack--ver m-stack--desktop">
+                    <div class="m-stack__item m-stack__item--left m-stack__item--middle m-stack__item--last">
+                        <span class="m-footer__copyright">
+                            7777 © All rights reserved
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </footer>
+        <!-- end::Footer -->
+    </div>
+    <!-- end:: Page -->
+    <!-- begin::Scroll Top -->
+    <div class="m-scroll-top m-scroll-top--skin-top" data-toggle="m-scroll-top" data-scroll-offset="500" data-scroll-speed="300">
+        <i class="la la-arrow-up"></i>
+    </div>
+    <!-- end::Scroll Top -->
+    <!-- begin::Quick Nav -->
+    <!-- begin::Quick Nav -->
+    <!--begin::Base Scripts -->
+
+    <script src="/Assets/demo/demo3/base/scripts.bundle.js" type="text/javascript"></script>
+    <!--end::Base Scripts -->
+    <!--begin::Page Vendors -->
+    <script src="/Assets/vendors/custom/fullcalendar/fullcalendar.bundle.js" type="text/javascript"></script>
+    <!--end::Page Vendors -->
+    <!--begin::Page Snippets -->
+    <script src="/Assets/demo/demo3/base/bootstrap-notify.js" type="text/javascript"></script>
+    <!--end::Page Snippets -->
+    <script>
+       
+    </script>
+
+
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        $("#overlay23").hide();
+    });
+
+    window.addEventListener("beforeunload", function () {
+        $("#overlay23").show();
+    });
+    function showLoader() {
+        $("#overlay23").removeClass("d-none");
+    }
+
+    function hideLoader() {
+        $("#overlay23").addClass("d-none");
+    }
+   
+    $(function () {
+        $(this).bind("contextmenu", function (e) {
+            e.preventDefault();
+        });
+    });
+    if (!window.console) window.console = {};
+    var methods = ["log", "debug", "warn", "info", "dir", "dirxml", "trace", "profile"];
+    for (var i = 0; i < methods.length; i++) {
+        console[methods[i]] = function () { };
+    }
+    document.onkeydown = function (e) {
+        if (event.keyCode == 123) {
+            return false;
+        }
+        if (e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) {
+            return false;
+        }
+        if (e.ctrlKey && e.shiftKey && e.keyCode == 'C'.charCodeAt(0)) {
+            return false;
+        }
+        if (e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) {
+            return false;
+        }
+        if (e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) {
+            return false;
+        }
+    }
+</script></body><!-- end::Body --></html>
