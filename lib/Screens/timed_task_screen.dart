@@ -8,6 +8,26 @@ import '../services/local_storage_service.dart';
 import '../services/note_preview.dart';
 import '../widgets/checked_items_header.dart'; // NEW
 
+/// How the label field of a timed-task row is decorated.
+///
+/// Public so `test/note_row_alignment_test.dart` can measure the exact
+/// decoration this screen uses instead of a copy that could drift from it.
+const kTimedTaskLabelDecoration = InputDecoration(
+  hintText: "Add timed task...",
+  hintStyle: TextStyle(color: Colors.white24),
+  border: InputBorder.none,
+  // The hint exists only until something is typed, but the decorator sizes
+  // the whole field to it anyway. On a phone "Add timed task..." is wider
+  // than the column left between the checkbox and the countdown, so it
+  // wrapped to two lines, made the field two lines tall, and left a
+  // one-line label sitting at the top of that box: visibly higher than the
+  // checkbox and the countdown beside it. Capping the hint at one line keeps
+  // the field the height of its own text, which is what lines the label up
+  // again. The to-do screen needs no such cap, because its hint is short and
+  // its column (nothing but an X beside it) is wide.
+  hintMaxLines: 1,
+);
+
 class TimedTaskScreen extends StatefulWidget {
   final Note note;
 
@@ -291,11 +311,7 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
         textInputAction: TextInputAction.next,
         maxLines: null,
         keyboardType: TextInputType.multiline,
-        decoration: const InputDecoration(
-          hintText: "Add timed task...",
-          hintStyle: TextStyle(color: Colors.white24),
-          border: InputBorder.none,
-        ),
+        decoration: kTimedTaskLabelDecoration,
         onChanged: (text) => item.text = text,
         onFieldSubmitted: (_) => _onLabelSubmitted(item),
       ),

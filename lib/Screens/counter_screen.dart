@@ -6,6 +6,29 @@ import '../theme/app_colors.dart';
 import '../services/database_service.dart';
 import '../services/local_storage_service.dart';
 
+/// How the label field of a counter row is decorated.
+///
+/// Public so `test/note_row_alignment_test.dart` can measure the exact
+/// decoration this screen uses instead of a copy that could drift from it.
+const kCounterLabelDecoration = InputDecoration(
+  hintText: "Add counter feature...",
+  hintStyle: TextStyle(color: Colors.white24),
+  border: InputBorder.none,
+  isDense: true,
+  // Two things kept this label off the line drawn by the "1." number and by
+  // the +/- controls, which the row centres vertically:
+  //   * `top: 25` padded the field on one side only, dropping the label
+  //     about 12px below them.
+  //   * a hint allowed to wrap reserved its own height below a label shorter
+  //     than itself, which lifts the label off the top instead, by about as
+  //     much.
+  // Zero padding plus a one-line hint makes the field exactly as tall as its
+  // text, so number, label and controls all centre together for a one-line
+  // label and for a wrapped one alike.
+  contentPadding: EdgeInsets.zero,
+  hintMaxLines: 1,
+);
+
 class CounterScreen extends StatefulWidget {
   final Note note;
 
@@ -267,13 +290,7 @@ class _CounterRowItemState extends State<CounterRowItem> {
               maxLines: null,
               minLines: 1,
               keyboardType: TextInputType.multiline,
-              decoration: const InputDecoration(
-                hintText: "Add counter feature...",
-                hintStyle: TextStyle(color: Colors.white24),
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.only(top: 25),
-              ),
+              decoration: kCounterLabelDecoration,
               onChanged: (text) => widget.item.label = text,
               onSubmitted: (_) => widget.onNextRowRequested(),
             ),
