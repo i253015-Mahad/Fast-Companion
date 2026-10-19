@@ -14,9 +14,21 @@
 // fixtures to prove none of them survived. A leftover fails the run rather
 // than waiting to be noticed in review.
 //
+// The on-device page dump this was written alongside is gone now — the
+// parsers it existed to enable exist, and it burned its way through the
+// portal's five-request session every run. This stays, because it is not
+// scaffolding but hygiene: it is what stops a real fee balance or roll
+// number reaching the repository, and the only alternative to it is a
+// person reading HTML for personal values, which is exactly how such a
+// thing gets in. The committed fixtures passed through it; a future
+// fixture — a portal change, a page newly worth parsing — has to pass
+// through it too.
+//
 //   dart run tool/sanitize_flex_fixtures.dart [--src <dir>] [--out <dir>]
 //
-// Defaults: src = %TEMP%/opencode/flex_dump, out = test/fixtures.
+// Defaults: src = %TEMP%/opencode/flex_dump, out = test/fixtures. With the
+// dump tool gone, --src is simply whatever directory the raw HTML ended up
+// in after being pulled off the phone.
 import 'dart:io';
 
 /// What a redacted value becomes.

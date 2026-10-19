@@ -181,20 +181,6 @@ class FlexSessionService {
     return result.body;
   }
 
-  /// TEMPORARY — Phase 0 of the Flex alerts feature.
-  ///
-  /// The request headers this service sends, so the page dump can make
-  /// its own requests without copying them. Goes away with FlexPageDump.
-  Map<String, String> get debugHeaders => _headers;
-
-  /// TEMPORARY — Phase 0 of the Flex alerts feature.
-  ///
-  /// Adopts a cookie handed back by the portal, the way a browser would.
-  /// Goes away with FlexPageDump.
-  void debugAdoptCookie(String cookie) {
-    if (cookie.isNotEmpty) _cookie = cookie;
-  }
-
   /// The same request as [getHtml], but it says what went wrong instead
   /// of folding every failure into `null`. [getHtml] collapses "the
   /// portal said 404" and "we were bounced to sign-in" into one answer
