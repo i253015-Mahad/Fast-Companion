@@ -171,8 +171,13 @@ class FlexSessionService {
   /// request failed. Callers must treat `null` as "unknown", never as
   /// "no data" — the WebView remains the source of truth, so a rejected
   /// fetch degrades to showing the live site rather than a wrong answer.
+  ///
+  /// [fetchPage] for when those cases have to be told apart: a poll that
+  /// cannot see the difference between "the session died" and "the request
+  /// failed" cannot say so, and one that reads either as "the page is
+  /// empty" will report every course the student has as gone.
   Future<String?> getHtml(String path) async {
-    final result = await getHtmlDetailed(path);
+    final result = await fetchPage(path);
     return result.body;
   }
 
@@ -190,17 +195,17 @@ class FlexSessionService {
     if (cookie.isNotEmpty) _cookie = cookie;
   }
 
-  /// TEMPORARY — Phase 0 of the Flex alerts feature.
-  ///
   /// The same request as [getHtml], but it says what went wrong instead
   /// of folding every failure into `null`. [getHtml] collapses "the
   /// portal said 404" and "we were bounced to sign-in" into one answer
-  /// because its callers only care that they have nothing; the page
-  /// dump needs to tell them apart, since a route that 404s is a
-  /// different problem from a session that died mid-run.
+  /// because its callers only care that they have nothing; the alert poll
+  /// needs to tell them apart — a session that expired overnight is a
+  /// different answer from a page that never existed, and only one of
+  /// them is worth waking a student for.
   ///
-  /// Goes away with FlexPageDump.
-  Future<({int? status, bool loginRedirect, String? body})> getHtmlDetailed(
+  /// `body` is `null` whenever the page was not obtained; `loginRedirect`
+  /// says whether that was because the session died.
+  Future<({int? status, bool loginRedirect, String? body})> fetchPage(
     String path,
   ) async {
     if (!hasSession) {

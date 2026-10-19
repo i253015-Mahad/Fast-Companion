@@ -15,6 +15,7 @@ import 'models/note.dart';
 import 'services/local_storage_service.dart';
 import 'services/multi_account_auth_service.dart'; // NEW (Fix 3b)
 import 'services/reminder_notification_service.dart';
+import 'services/flex_alert_notifier.dart';
 import 'app_signals.dart';
 
 // Required so the widget-configuration entry point (used by
@@ -99,6 +100,22 @@ Future<void> _openNoteFromWidget(Map<String, dynamic> args) async {
   homeRefreshSignal.value++;
 }
 
+// Routes a tapped notification by its payload. See the registration in
+// main(): every notification the app raises shares one plugin and one tap
+// callback, so this is the single place that decides what a tap means.
+Future<void> _dispatchNotificationTap(String payload) async {
+  if (payload.startsWith(FlexAlertNotifier.payloadPrefix)) {
+    // The Flex tab. Nothing else to resolve — the home screen is listening
+    // and will show the tab the alert is about.
+    FlexAlertNotifier.pendingTap.value = true;
+    return;
+  }
+  final parts = payload.split('|');
+  if (parts.length == 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
+    await _openNoteFromWidget({'uid': parts[0], 'noteId': parts[1]});
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -111,15 +128,15 @@ void main() async {
 
   await HomeWidget.registerInteractivityCallback(widgetBackgroundCallback);
 
-  // Reminder notifications carry a `uid|noteId` payload; tapping one opens
-  // that timed note through the same path as the widget's edit button.
+  // One plugin means one tap callback, registered by
+  // ReminderNotificationService — so every notification tap arrives here
+  // and is told apart by its payload's shape. A reminder is `uid|noteId`
+  // and opens that note; a Flex alert is `flex|uid` and lands on the Flex
+  // tab. The prefix is checked first because the reminder parser cannot
+  // make the distinction itself: it would read a Flex payload as a note
+  // whose id happens to be a uid and open nothing, silently, every time.
   // (Cold starts launched *by* the tap are handled below via launch details.)
-  ReminderNotificationService.onNotificationTap = (payload) {
-    final parts = payload.split('|');
-    if (parts.length == 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
-      _openNoteFromWidget({'uid': parts[0], 'noteId': parts[1]});
-    }
-  };
+  ReminderNotificationService.onNotificationTap = _dispatchNotificationTap;
 
   // Handles the widget's "edit" (pencil) button while the app is already
   // running. CHANGED (Fix 3b): the handler now just calls the function above.
@@ -138,14 +155,12 @@ void main() async {
     await ReminderNotificationService.syncAll();
     await ReminderNotificationService.requestPermissionOnce();
 
-    // Or cold start launched by TAPPING a reminder notification — open that
-    // note instead of the widget's pending edit request.
+    // Or cold start launched by TAPPING a notification — open that note
+    // instead of the widget's pending edit request, or switch to the Flex
+    // tab if the tap was a Flex alert.
     final launch = await ReminderNotificationService.launchDetails();
     if (launch != null && launch.didNotificationLaunchApp) {
-      final parts = (launch.notificationResponse?.payload ?? '').split('|');
-      if (parts.length == 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
-        await _openNoteFromWidget({'uid': parts[0], 'noteId': parts[1]});
-      }
+      await _dispatchNotificationTap(launch.notificationResponse?.payload ?? '');
       return;
     }
 

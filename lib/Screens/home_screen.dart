@@ -22,6 +22,8 @@ import 'package:fast_companion/services/multi_account_auth_service.dart';
 import 'package:fast_companion/services/profile_photo_cache.dart';
 import 'package:fast_companion/services/home_widget_service.dart';
 import 'package:fast_companion/services/reminder_notification_service.dart';
+import 'package:fast_companion/services/flex_alert_notifier.dart';
+import 'package:fast_companion/services/flex_alert_poller.dart';
 import '../app_signals.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -48,6 +50,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Held in an IndexedStack so the Notes state (search text, scroll,
   // loaded notes) survives a round trip to another tab.
   int _navIndex = 0;
+
+  /// Which child of the IndexedStack below is the Flex tab.
+  ///
+  /// One place to name it, because it is now referred to from three — the
+  /// nav bar, the notification tap-through, and the resume check — and a
+  /// literal repeated in each is a mismatch waiting to be introduced by
+  /// reordering the tabs.
+  static const int _flexTabIndex = 3;
+
+  /// Set while a Flex poll is running, so a second trip to the tab does not
+  /// start a second one. The portal serves a session exactly five requests
+  /// and then refuses, so two overlapping polls would spend most of that
+  /// budget fetching the same three pages twice.
+  bool _flexPolling = false;
 
   // Live vertical drag distance (px) on the account avatar, for the
   // swipe-up/down-to-switch-account gesture. Negative = swiping up.
@@ -477,12 +493,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     _initState();
     homeRefreshSignal.addListener(_handleExternalRefreshSignal);
+    FlexAlertNotifier.pendingTap.addListener(_handleFlexAlertTap);
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
     homeRefreshSignal.removeListener(_handleExternalRefreshSignal);
+    FlexAlertNotifier.pendingTap.removeListener(_handleFlexAlertTap);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -497,10 +515,59 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed && _activeNotesUid != null) {
       _refreshLocalNotes();
     }
+    // The Flex tab is on screen and the student just came back to the app —
+    // the most likely moment they want to know whether anything moved. The
+    // per-source TTLs decide whether this costs anything at all, so a
+    // resume a minute after the last check spends no requests.
+    if (state == AppLifecycleState.resumed && _navIndex == _flexTabIndex) {
+      _pollFlexAlerts();
+    }
   }
 
   void _handleExternalRefreshSignal() {
     if (mounted) _refreshLocalNotes();
+  }
+
+  /// A Flex alert was tapped: show the tab it is about, then poll.
+  ///
+  /// This runs before any widget knows what a tap meant — the notifier only
+  /// carries a flag — so the switch happens here, where the tabs live. The
+  /// poll follows because the student has just asked "what changed?" by
+  /// tapping, and answering from a snapshot fetched last week would defeat
+  /// the point of the tap.
+  void _handleFlexAlertTap() {
+    if (!FlexAlertNotifier.pendingTap.value || !mounted) return;
+    FlexAlertNotifier.pendingTap.value = false;
+    if (_navIndex != _flexTabIndex) {
+      setState(() {
+        _navIndex = _flexTabIndex;
+        _isMenuOpen = false;
+      });
+    }
+    _pollFlexAlerts();
+  }
+
+  /// Asks the portal whether fees, marks or grades have changed, and lets
+  /// the poll raise the one notification if they have.
+  ///
+  /// In-app only and by design: the portal serves a session exactly five
+  /// requests and refuses the sixth, so polling on a timer would spend the
+  /// session before the student ever opens the tab. Running when they do
+  /// means the answers arrive when someone is there to read them — and the
+  /// poll's own per-source TTLs mean a quick return to the tab costs
+  /// nothing at all.
+  Future<void> _pollFlexAlerts() async {
+    if (_flexPolling) return;
+    _flexPolling = true;
+    try {
+      await FlexAlertPoller().poll(_activeNotesUid ?? _dbService.uid);
+    } catch (e) {
+      // A poll is a background nicety. If it throws it must not take the
+      // screen with it — the student still has the portal in the WebView.
+      debugPrint('Flex alert poll failed: $e');
+    } finally {
+      _flexPolling = false;
+    }
   }
 
   Future<void> _initState() async {
@@ -1579,7 +1646,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               Expanded(
                 child: _buildNavTab(
-                  index: 3,
+                  index: _flexTabIndex,
                   icon: Icons.school_rounded,
                   label: "Flex",
                 ),
@@ -1609,6 +1676,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _navIndex = index;
           _isMenuOpen = false;
         });
+        // Shown, then asked whether anything changed. Polling on arrival
+        // rather than on a timer is deliberate — see [_pollFlexAlerts].
+        if (index == _flexTabIndex) _pollFlexAlerts();
       },
       child: Column(
         mainAxisSize: MainAxisSize.min,
