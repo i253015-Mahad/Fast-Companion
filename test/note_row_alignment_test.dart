@@ -1,17 +1,23 @@
 // test/note_row_alignment_test.dart
 //
-// One thing about a note row is measured here, because it is decided by the
-// field's InputDecoration rather than by the row around it, and it is not
-// obvious from reading either one.
+// Two things about a note row are measured here, because both are decided by
+// the field's InputDecoration rather than by the row around it, and neither
+// is obvious from reading either one.
 //
-// Alignment. The label has to sit on the same centre line as every other
-// control in its row: the checkbox and the countdown in a timed task, the
-// row number and the +/- buttons in a counter. That holds for a label on one
-// line and for one that wraps to several. The hint still there before
-// anything is typed is measured whether or not it is showing, so a hint
-// wide enough to wrap makes the field taller than the text actually in it -
-// and the text stays at the top of that box. A short label then reads as
-// sitting high beside the checkbox, which is what prompted this test.
+// 1. Alignment. The label has to sit on the same centre line as every other
+//    control in its row: the checkbox and the countdown in a timed task, the
+//    row number and the +/- buttons in a counter. That holds for a label on
+//    one line and for one that wraps to several. The hint still there before
+//    anything is typed is measured whether or not it is showing, so a hint
+//    wide enough to wrap makes the field taller than the text actually in it
+//    - and the text stays at the top of that box. A short label then reads
+//    as sitting high beside the checkbox, which is what prompted this test.
+//
+// 2. Spacing. A counter needs a good fraction of a line of clear space
+//    around it - far more than a line box leaves between its own lines - or a
+//    label on two or more lines runs into the counter below it and the rows
+//    stop reading as separate things. Nothing else groups these rows: no
+//    rule, no stripe, only how far apart they are.
 //
 // The decorations the fields use are exported by the screens, and the
 // counter rows here are the screen's own [CounterRowItem], so what is
@@ -26,6 +32,7 @@ import 'package:fast_companion/Screens/counter_screen.dart';
 import 'package:fast_companion/Screens/timed_task_screen.dart';
 import 'package:fast_companion/models/note.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The measured boxes of one note row.
@@ -195,6 +202,43 @@ RowGeometry counterGeometry(WidgetTester tester, int row) {
   );
 }
 
+/// The counter's own Row, which sits inside the widget's padding, so the
+/// distance between two of them is the empty space between two counters.
+Rect counterRowBox(WidgetTester tester, int row) => tester.getRect(
+    find.descendant(of: find.byKey(Key('r$row')), matching: find.byType(Row)).first);
+
+/// The pitch between two consecutive lines of row [row]'s label: how far the
+/// second line's box sits below the first's. Line boxes touch, so this is the
+/// scale a reader is judging "too close" against when a label wraps.
+double labelLinePitch(WidgetTester tester, int row, String label) {
+  final labelField = find.descendant(
+    of: find.byKey(Key('r$row')),
+    matching: find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration == kCounterLabelDecoration),
+  );
+  final editable = _findEditable(tester.renderObject(labelField));
+  expect(editable, isNotNull, reason: 'the label has to have a paragraph');
+  final boxes = editable!.getBoxesForSelection(
+      TextSelection(baseOffset: 0, extentOffset: label.length));
+
+  // One box per run, not per line, so take the first two distinct tops.
+  final tops = <double>[];
+  for (final b in boxes) {
+    if (!tops.contains(b.top)) tops.add(b.top);
+    if (tops.length == 2) break;
+  }
+  expect(tops.length, 2,
+      reason: 'the label has to wrap, or there is nothing to compare');
+  return tops[1] - tops[0];
+}
+
+RenderEditable? _findEditable(RenderObject root) {
+  if (root is RenderEditable) return root;
+  RenderEditable? found;
+  root.visitChildren((child) => found ??= _findEditable(child));
+  return found;
+}
+
 void main() {
   group('timed task row', () {
     deviceTest('a one-line label sits on the countdown and checkbox line',
@@ -244,6 +288,27 @@ void main() {
       final g = counterGeometry(tester, 0);
       expect(g.glyphs.height, greaterThan(40));
       expect(isAligned(g), isTrue, reason: describe(g));
+    });
+  });
+
+  group('counter rows apart', () {
+    deviceTest('counters are further apart than the lines of one label',
+        (tester) async {
+      const wrapped = 'line one\nline two\nline three';
+      await pumpCounters(tester, [wrapped, 'Read']);
+
+      final betweenCounters =
+          counterRowBox(tester, 1).top - counterRowBox(tester, 0).bottom;
+      final pitch = labelLinePitch(tester, 0, wrapped);
+
+      expect(
+        betweenCounters,
+        greaterThan(pitch * 0.5),
+        reason: 'the space between two counters ($betweenCounters) has to be '
+            'a good fraction of a line ($pitch), or a label that wraps reads '
+            'straight into the counter below it and the rows stop reading as '
+            'separate rows',
+      );
     });
   });
 }

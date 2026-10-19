@@ -268,7 +268,15 @@ class _CounterRowItemState extends State<CounterRowItem> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      // Four pixels each way left only 8px of empty space between two
+      // counters, which is about what a wrapped label leaves between its own
+      // lines. With a label on two or more lines the rows then ran together:
+      // the space *inside* one label looked as big as the space *between*
+      // two labels, so the eye had nothing to group them by. Ten each way
+      // makes the gap between counters clearly larger than the gap between
+      // lines of a single label, which is what tells one counter apart from
+      // the next.
+      padding: const EdgeInsets.symmetric(vertical: 10.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
