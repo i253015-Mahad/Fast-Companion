@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/room_occupancy.dart';
 import '../models/timetable_entry.dart';
+import 'csv_reader.dart';
 
 /// A timetable loaded from a school's Google Sheet, with the time we
 /// fetched it so the UI can show a "last updated" footer and know when
@@ -1683,48 +1684,15 @@ class TimetableService {
 
   // ================= CSV =================
 
-  /// Minimal RFC-4180 CSV reader (quotes, doubled quotes, embedded
-  /// newlines) — the sheets use all three.
+  /// Reads a sheet's CSV, then repairs the brackets the sheets lose as
+  /// often in CSV as in HTML — a course written `(10:00-11:50))`, a room
+  /// with no closing paren — the same way the HTML cells are.
+  ///
+  /// The reader itself is [parseCsv], shared with the faculty directory,
+  /// which wants the same quote and embedded-newline handling and none
+  /// of this timetable-specific repair.
   static List<List<String>> _parseCsv(String text) {
-    final rows = <List<String>>[];
-    var row = <String>[];
-    var field = StringBuffer();
-    var inQuotes = false;
-
-    for (var i = 0; i < text.length; i++) {
-      final c = text[i];
-      if (inQuotes) {
-        if (c == '"') {
-          if (i + 1 < text.length && text[i + 1] == '"') {
-            field.write('"');
-            i++;
-          } else {
-            inQuotes = false;
-          }
-        } else {
-          field.write(c);
-        }
-      } else if (c == '"') {
-        inQuotes = true;
-      } else if (c == ',') {
-        row.add(field.toString());
-        field = StringBuffer();
-      } else if (c == '\n') {
-        row.add(field.toString());
-        rows.add(row);
-        row = <String>[];
-        field = StringBuffer();
-      } else if (c != '\r') {
-        field.write(c);
-      }
-    }
-    if (field.isNotEmpty || row.isNotEmpty) {
-      row.add(field.toString());
-      rows.add(row);
-    }
-    // The sheets lose brackets as often in CSV as in HTML — a course is
-    // written `(10:00-11:50))` and a room with no closing paren — so
-    // every field is repaired the same way the HTML cells are.
+    final rows = parseCsv(text);
     for (final r in rows) {
       for (var i = 0; i < r.length; i++) {
         r[i] = _balanceParens(r[i]);
