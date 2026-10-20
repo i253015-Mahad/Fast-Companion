@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/room_occupancy.dart';
 import '../models/timetable_entry.dart';
 
 /// A timetable loaded from a school's Google Sheet, with the time we
@@ -89,6 +90,23 @@ class _LegendSwatch {
     required this.g,
     required this.b,
   });
+}
+
+/// A room being read out of one sheet: the stretches it is booked, and
+/// whether the sheet filed it under its `Labs` section.
+///
+/// One entry per (day, room); a room that appears twice on a tab — the
+/// daytime and evening grids both list Computing's D-block — accumulates
+/// into the same entry, which is what makes "free at 6pm" correct for it.
+class _RoomDraft {
+  final List<TimeRange> occupied = [];
+
+  /// Starts as the section the room was first seen in and is promoted to
+  /// a lab if either section claims it. No room is in both today, so
+  /// this only ever settles the same way as the sheet's own header.
+  bool isLab;
+
+  _RoomDraft(this.isLab);
 }
 
 /// Fetches the university's published Google Sheets timetables and turns
@@ -1607,13 +1625,25 @@ class TimetableService {
     List<({int col, String start, String end})> timeCols,
     int ownSlot,
     int spanEndCol,
+  ) => _blockEnd(timeCols, ownSlot, _spannedSlot(timeCols, ownSlot, spanEndCol));
+
+  /// The last period a cell starting in [ownSlot] covers, given that its
+  /// merged fill reaches [spanEndCol].
+  ///
+  /// Same rule as [_spannedEnd], kept as an index so callers who need
+  /// the period's *minutes* rather than its clock label do not have to
+  /// convert a bare time back out of context.
+  static int _spannedSlot(
+    List<({int col, String start, String end})> timeCols,
+    int ownSlot,
+    int spanEndCol,
   ) {
     var last = ownSlot;
     for (var k = ownSlot + 1; k < timeCols.length; k++) {
       if (spanEndCol < _slotLastCol(timeCols, k)) break;
       last = k;
     }
-    return _blockEnd(timeCols, ownSlot, last);
+    return last;
   }
 
   /// Where a block that occupies [ownSlot] through [lastSlot] ends.
@@ -1699,6 +1729,619 @@ class TimetableService {
     }
     return rows;
   }
+
+  // ================= ROOMS =================
+
+  /// How long a room list stays fresh, on the same window the timetable
+  /// cache uses — both are read from the same sheets.
+  static const Duration _roomsTtl = Duration(hours: 6);
+
+  /// The weekday names the sheets use for their day blocks.
+  static const List<String> _weekdays = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+  ];
+
+  /// Matches a cell that *begins* with a time range.
+  ///
+  /// Computing labels its last evening lab slot
+  /// `05:20 - 08:05 (inc. 10 min. break)`, which no `^...$` pattern can
+  /// match. Reading only the strict columns would leave that one period
+  /// unrecognised, and everything booked into it — every evening lab —
+  /// would read as free.
+  static final RegExp _leadingSlotRe = RegExp(
+    r'^\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})',
+  );
+
+  /// Matches a time range written inside a cell, as the sheets do for a
+  /// class that does not sit on the period boundary.
+  static final RegExp _inlineSlotRe = RegExp(
+    r'(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})',
+  );
+
+  /// Matches Management's bare section codes — `AF07B`, `BBA01B`,
+  /// `FT07A/B` — which sit in a period of their own beside the course
+  /// they belong to.
+  ///
+  /// Two digits is what separates a code from a course number: `BSBA05C`
+  /// is a section, `MG4011` is a course.
+  static final RegExp _sectionCodeRe = RegExp(
+    r'^[A-Z]{2,5}\s?\d{2}[A-Z]{0,2}(?:/[A-Z]\d?)?$',
+  );
+
+  /// Every room [school] publishes for [day], with the stretches each is
+  /// booked.
+  ///
+  /// Separate from [load] because the two need different things out of
+  /// the same sheet: a [TimetableEntry] is one occupied cell, so a room
+  /// free the whole day emits nothing and vanishes from the list
+  /// entirely — precisely the rooms this is for. This keeps the room
+  /// labels and the empty cells too.
+  ///
+  /// [day] is a full weekday name. Sunday is on no sheet, so it returns
+  /// empty rather than borrowing another day's rooms.
+  Future<List<RoomOccupancy>> loadRooms(
+    SchoolConfig school,
+    String day, {
+    bool forceRefresh = false,
+  }) async {
+    if (!school.available || !_weekdays.contains(day)) return const [];
+
+    final cached = await _readRoomCache(school.id, day);
+    if (!forceRefresh &&
+        cached != null &&
+        DateTime.now().difference(cached.$1) < _roomsTtl) {
+      return cached.$2;
+    }
+
+    try {
+      final rooms = await _fetchRooms(school, day);
+      await _writeRoomCache(school.id, day, rooms);
+      return rooms;
+    } catch (e) {
+      // An hour-old list beats none at all — but only when there is one
+      // to fall back on.
+      if (cached != null) return cached.$2;
+      rethrow;
+    }
+  }
+
+  Future<List<RoomOccupancy>> _fetchRooms(
+    SchoolConfig school,
+    String day,
+  ) async {
+    if (school.hasDayTabs) {
+      final gid = school.dayGids[day];
+      if (gid == null) return const [];
+      try {
+        final html = await _fetchHtml(school, gid);
+        return _parseRoomsComputing(_parseHtmlTable(html).grid, day, school.id);
+      } catch (e) {
+        debugPrint(
+          'Computing room sheet htmlview failed, falling back to CSV: $e',
+        );
+        final csv = await _fetchCsv(school, gid);
+        return _parseRoomsComputing(_asGrid(_parseCsv(csv)), day, school.id);
+      }
+    }
+
+    if (school.layout == SheetLayout.engineering) {
+      // Unlike [load] there is no CSV fallback here. Engineering draws a
+      // lab as one cell merged across two periods, and a CSV flattens
+      // that merge to a single occupied cell — leaving the lab's second
+      // period reading as spare time, and offering a busy room to
+      // whoever asked. No list is the safer answer.
+      final html = await _fetchHtml(school, school.defaultGid!);
+      return _keepDay(
+        _parseRoomsDayBlocks(_parseHtmlTable(html).grid, school.id),
+        day,
+      );
+    }
+
+    final csv = await _fetchCsv(school, school.defaultGid);
+    return _keepDay(
+      _parseRoomsDayBlocks(_asGrid(_parseCsv(csv)), school.id),
+      day,
+    );
+  }
+
+  static List<RoomOccupancy> _keepDay(
+    List<RoomOccupancy> rooms,
+    String day,
+  ) => [for (final r in rooms) if (r.day == day) r];
+
+  /// Wraps parsed CSV rows in the same cell shape the HTML parser
+  /// produces, so one room parser can read both.
+  ///
+  /// A CSV cannot carry a merge, so every cell comes back one column
+  /// wide — which costs nothing for Management, whose two-period labs
+  /// are written into both period cells rather than drawn as one block.
+  static List<List<SheetCell>> _asGrid(List<List<String>> rows) => [
+    for (final r in rows) [for (final f in r) SheetCell(text: f)],
+  ];
+
+  /// Time columns of a header row, as (column, start, end).
+  ///
+  /// Unlike [_timeColumns] a label only has to *start* with a range, so
+  /// Computing's annotated evening lab slot still counts.
+  static List<({int col, String start, String end})> _leadingTimeColumns(
+    List<String> row,
+  ) {
+    final found = <({int col, String start, String end})>[];
+    for (var j = 0; j < row.length; j++) {
+      final m = _leadingSlotRe.firstMatch(row[j]);
+      if (m != null) {
+        found.add((col: j, start: m.group(1)!, end: m.group(2)!));
+      }
+    }
+    return found;
+  }
+
+  /// Widens a day window to cover [cols].
+  ///
+  /// The window starts at zero, so the first row to report times sets
+  /// both ends and every later one only grows them.
+  static (int, int) _windowFrom(
+    (int, int) window,
+    List<({int col, String start, String end})> cols,
+  ) {
+    if (cols.isEmpty) return window;
+    final (s, e) = minutesRange(cols.first.start, cols.last.end);
+    return (
+      window.$1 == 0 || s < window.$1 ? s : window.$1,
+      e > window.$2 ? e : window.$2,
+    );
+  }
+
+  /// Each period as start/end minutes, in the half-day reading
+  /// [minutesRange] gives a pair of clock times.
+  static List<(int, int)> _slotMinutes(
+    List<({int col, String start, String end})> timeCols,
+  ) => [for (final t in timeCols) minutesRange(t.start, t.end)];
+
+  /// Whether a label in a sheet's room column names a room.
+  ///
+  /// The sheets park their own headings in that column — `Room`,
+  /// `Classes`, `Labs` — and the auditorium sits in it while being one
+  /// hall booked for events rather than by the hour, so all of them are
+  /// dropped before anything else looks at them.
+  static bool _isRoomLabel(String label) {
+    final lower = label.trim().toLowerCase();
+    if (lower.isEmpty) return false;
+    if (lower == 'room' || lower == 'classes') return false;
+    if (lower == 'lab' || lower == 'labs') return false;
+    // `Audi` and `Audiatoriam`: one hall, never spare between events.
+    if (lower.startsWith('audi')) return false;
+    return true;
+  }
+
+  /// The period a cell at [col] falls in: the last time label at or
+  /// before it that still sits after [afterCol], or -1 when there is
+  /// none.
+  ///
+  /// The second half of that is what keeps Computing's two grids apart.
+  /// Its rows carry a room label at column 0 *and* another beside the
+  /// evening grid, with cells for both on the same row, so a cell may
+  /// only be booked against a period starting after the label it belongs
+  /// to — otherwise an evening class lands in a daytime room.
+  static int _slotFor(
+    List<({int col, String start, String end})> timeCols,
+    int col,
+    int afterCol,
+  ) {
+    var slot = -1;
+    for (var k = 0; k < timeCols.length; k++) {
+      if (timeCols[k].col > col) break;
+      if (timeCols[k].col <= afterCol) continue;
+      slot = k;
+    }
+    return slot;
+  }
+
+  /// Books one occupied cell.
+  ///
+  /// [slot] is the period the cell starts in and [spanEndCol] the last
+  /// column its merged fill reaches. Returns the booking so a caller can
+  /// widen it — see the section codes in the day-block sheets.
+  static TimeRange? _record(
+    Map<(String, String), _RoomDraft> drafts, {
+    required String day,
+    required String room,
+    required bool isLab,
+    required List<({int col, String start, String end})> timeCols,
+    required List<(int, int)> slotMinutes,
+    required int slot,
+    required int spanEndCol,
+    required String body,
+  }) {
+    if (day.isEmpty || slot < 0 || !_isRoomLabel(room)) return null;
+
+    TimeRange? range;
+    // A time typed into the cell overrides the period: the sheets record
+    // rescheduled and split classes that way, and keeping only the
+    // period would call a room free while a class sits in it.
+    final inline = _inlineSlotRe.firstMatch(body);
+    if (inline != null) {
+      range = TimeRange.parse(
+        _normalizeTime(inline.group(1)!),
+        _normalizeTime(inline.group(2)!),
+      );
+    } else {
+      // Both ends come from period tables rather than from a bare clock
+      // time, so an evening slot's `08:05` end is read against the
+      // 18:40 start beside it instead of as the morning.
+      final last = _spannedSlot(timeCols, slot, spanEndCol);
+      range = TimeRange(
+        start: slotMinutes[slot].$1,
+        end: slotMinutes[last].$2,
+      );
+    }
+    if (range == null || range.end <= range.start) return null;
+
+    final draft = drafts.putIfAbsent((day, room), () => _RoomDraft(isLab));
+    // A room filed under `Labs` by either section stays a lab.
+    if (isLab) draft.isLab = true;
+    draft.occupied.add(range);
+    return range;
+  }
+
+  static List<RoomOccupancy> _finishRooms(
+    Map<(String, String), _RoomDraft> drafts,
+    String schoolId,
+    (int, int) window,
+  ) {
+    // A class can sit outside the periods the header advertises —
+    // Engineering records a make-up as `05:15 -08:00` — and a window
+    // stopping at the last labelled period would then call the rest of
+    // the day free while a booking is in it.
+    var start = window.$1;
+    var end = window.$2;
+    for (final draft in drafts.values) {
+      for (final r in draft.occupied) {
+        if (start == 0 || r.start < start) start = r.start;
+        if (r.end > end) end = r.end;
+      }
+    }
+
+    return [
+      for (final e in drafts.entries)
+        RoomOccupancy(
+          room: e.key.$2,
+          building: buildingOf(e.key.$2),
+          isLab: e.value.isLab,
+          day: e.key.$1,
+          schools: [schoolId],
+          occupied: mergeRanges(e.value.occupied),
+          dayStart: start,
+          dayEnd: end,
+        ),
+    ];
+  }
+
+  /// One day's Computing tab: a room x time grid, a second evening grid
+  /// hung off its own `Room` column to the right, and a `Lab` separator
+  /// that opens labs with time headers of their own — `08:30-11:15`
+  /// against the daytime `08:30-09:50`.
+  ///
+  /// Returns that one day only; the tab holds no other.
+  static List<RoomOccupancy> _parseRoomsComputing(
+    List<List<SheetCell>> grid,
+    String day,
+    String schoolId,
+  ) {
+    var headerIndex = -1;
+    var timeCols = <({int col, String start, String end})>[];
+    for (var i = 0; i < grid.length && i < 12; i++) {
+      final found = _leadingTimeColumns(_texts(grid[i]));
+      if (found.length >= 4) {
+        headerIndex = i;
+        timeCols = found;
+        break;
+      }
+    }
+    if (headerIndex < 0 || timeCols.isEmpty) return const [];
+
+    // Every column headed `Room`: column 0 for the daytime grid, and one
+    // more beside the evening grid.
+    final roomCols = <int>[
+      for (var j = 0; j < grid[headerIndex].length; j++)
+        if (grid[headerIndex][j].text
+            .trimLeft()
+            .toLowerCase()
+            .startsWith('room'))
+          j,
+    ];
+    if (roomCols.isEmpty) return const [];
+
+    var window = _windowFrom((0, 0), timeCols);
+
+    final drafts = <(String, String), _RoomDraft>{};
+    var kind = 'Classes';
+    var activeCols = timeCols;
+
+    for (var i = headerIndex + 1; i < grid.length; i++) {
+      final row = grid[i];
+      String text(int c) => c < row.length ? row[c].text.trim() : '';
+
+      // The labs name themselves in the room column and restate the time
+      // headers. Switching the label without the headers — or the
+      // headers without the label — would read every lab as running
+      // past its true end.
+      final section = text(roomCols.first).toLowerCase();
+      if (section == 'lab' || section == 'labs') {
+        kind = 'Labs';
+        final labCols = _leadingTimeColumns(_texts(row));
+        if (labCols.length >= 3) {
+          activeCols = labCols;
+          window = _windowFrom(window, labCols);
+        }
+        continue;
+      }
+      if (section == 'classes') {
+        kind = 'Classes';
+        continue;
+      }
+
+      final rooms = <({int col, String name})>[
+        for (final c in roomCols)
+          if (_isRoomLabel(text(c))) (col: c, name: text(c)),
+      ];
+      if (rooms.isEmpty) continue;
+
+      // A room is listed the moment the sheet names it, not the moment
+      // it is booked: the ones free the whole day carry no cell at all,
+      // and losing those is the bug this is here to fix.
+      for (final r in rooms) {
+        drafts.putIfAbsent((day, r.name), () => _RoomDraft(kind == 'Labs'));
+      }
+
+      final slotMinutes = _slotMinutes(activeCols);
+
+      for (var j = 0; j < row.length; j++) {
+        if (roomCols.contains(j)) continue;
+        final cell = row[j];
+        final body = cell.text.trim();
+        if (body.isEmpty || _slotRe.hasMatch(body)) continue;
+
+        // A cell belongs to the nearest room label on its left; with two
+        // grids sharing the row, anything else books an evening class
+        // into a daytime room.
+        var room = '';
+        var roomCol = -1;
+        for (final r in rooms) {
+          if (r.col < j && r.col > roomCol) {
+            room = r.name;
+            roomCol = r.col;
+          }
+        }
+        if (room.isEmpty) continue;
+
+        // A fill reaching the next label column has run into the other
+        // grid rather than into a longer class.
+        var spanEndCol = j + cell.span - 1;
+        for (final rc in roomCols) {
+          if (rc > j) {
+            if (rc - 1 < spanEndCol) spanEndCol = rc - 1;
+            break;
+          }
+        }
+
+        _record(
+          drafts,
+          day: day,
+          room: room,
+          isLab: kind == 'Labs',
+          timeCols: activeCols,
+          slotMinutes: slotMinutes,
+          slot: _slotFor(activeCols, j, roomCol),
+          spanEndCol: spanEndCol,
+          body: body,
+        );
+      }
+    }
+    return _finishRooms(drafts, schoolId, window);
+  }
+
+  /// Engineering's and Management's shared shape: the day down column 0,
+  /// `Classes`/`Labs` down column 1, the room down column 2, and one
+  /// column per period from 3 on — Management pairing a course with its
+  /// section code, Engineering drawing a lab as one merged cell with the
+  /// teacher on the row below.
+  ///
+  /// Every day lives on one tab, so all of them are returned and the
+  /// caller keeps the one it asked for.
+  static List<RoomOccupancy> _parseRoomsDayBlocks(
+    List<List<SheetCell>> grid,
+    String schoolId,
+  ) {
+    var headerIndex = -1;
+    var timeCols = <({int col, String start, String end})>[];
+    for (var i = 0; i < grid.length && i < 12; i++) {
+      final found = _leadingTimeColumns(_texts(grid[i]));
+      if (found.length >= 4) {
+        headerIndex = i;
+        timeCols = found;
+        break;
+      }
+    }
+    if (headerIndex < 0 || timeCols.isEmpty) return const [];
+
+    final window = _windowFrom((0, 0), timeCols);
+    final slotMinutes = _slotMinutes(timeCols);
+    final drafts = <(String, String), _RoomDraft>{};
+
+    var day = '';
+    var kind = 'Classes';
+    var room = '';
+
+    for (var i = headerIndex + 1; i < grid.length; i++) {
+      final row = grid[i];
+      String text(int c) => c < row.length ? row[c].text.trim() : '';
+      final c0 = text(0);
+      final c1 = text(1);
+      final c2 = text(2);
+
+      if (c0.isNotEmpty) {
+        if (_weekdays.contains(c0)) {
+          day = c0;
+          // A block always opens with classes, so a new day must not
+          // inherit the labs it finished the last one with.
+          kind = 'Classes';
+        } else {
+          // Anything else in column 0 closes the block: the sheet's own
+          // footers and legend rows, which would otherwise inherit the
+          // room of the last class above them.
+          day = '';
+          room = '';
+          continue;
+        }
+      }
+      if (c1 == 'Classes' || c1 == 'Labs') kind = c1;
+      // Engineering opens its labs with `Labs` in the room column;
+      // Management sometimes writes it in both.
+      if (c2 == 'Labs') kind = 'Labs';
+      if (_isRoomLabel(c2) && c2 != room) room = c2;
+
+      if (day.isEmpty || room.isEmpty) continue;
+
+      // As in Computing: being named is enough to be listed, so a room
+      // with an empty row still turns up as free all day.
+      drafts.putIfAbsent((day, room), () => _RoomDraft(kind == 'Labs'));
+
+      var bookingStart = -1;
+      var bookingWasTimed = false;
+
+      for (var j = 3; j < row.length; j++) {
+        final body = row[j].text.trim();
+        if (body.isEmpty || _slotRe.hasMatch(body)) continue;
+        final slot = _slotFor(timeCols, j, 2);
+        if (slot < 0) continue;
+
+        // Management pairs a course with its section code in a later
+        // period of the same block, and that code's period is where the
+        // block really stops — widening the booking to it is what makes
+        // a two-period lab three hours instead of one. A code carrying
+        // its own time is left alone: the time is the finer answer, and
+        // the course cell has already booked it.
+        if (_sectionCodeRe.hasMatch(body)) {
+          if (bookingStart >= 0 && !bookingWasTimed) {
+            final range = TimeRange(
+              start: bookingStart,
+              end: slotMinutes[slot].$2,
+            );
+            if (range.end > range.start) {
+              drafts
+                  .putIfAbsent((day, room), () => _RoomDraft(kind == 'Labs'))
+                  .occupied
+                  .add(range);
+            }
+          }
+          continue;
+        }
+
+        final booked = _record(
+          drafts,
+          day: day,
+          room: room,
+          isLab: kind == 'Labs',
+          timeCols: timeCols,
+          slotMinutes: slotMinutes,
+          slot: slot,
+          spanEndCol: row[j].span > 1 ? j + row[j].span - 1 : j,
+          body: body,
+        );
+        bookingStart = booked?.start ?? -1;
+        bookingWasTimed = _inlineSlotRe.hasMatch(body);
+      }
+    }
+    return _finishRooms(drafts, schoolId, window);
+  }
+
+  static String _roomsKey(String schoolId, String day) =>
+      'rooms_${schoolId}_$day';
+
+  Future<(DateTime, List<RoomOccupancy>)?> _readRoomCache(
+    String schoolId,
+    String day,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final raw = prefs.getString(_roomsKey(schoolId, day));
+      if (raw == null) return null;
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      if (decoded['v'] != _cacheVersion) return null; // stale format
+      return (
+        DateTime.tryParse(decoded['fetchedAt'] as String? ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+        [
+          for (final r in decoded['rooms'] as List<dynamic>)
+            RoomOccupancy.fromJson(Map<String, dynamic>.from(r as Map)),
+        ],
+      );
+    } catch (e) {
+      debugPrint('Room cache read failed: $e');
+      return null;
+    }
+  }
+
+  Future<void> _writeRoomCache(
+    String schoolId,
+    String day,
+    List<RoomOccupancy> rooms,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _roomsKey(schoolId, day),
+        jsonEncode({
+          'v': _cacheVersion,
+          'fetchedAt': DateTime.now().toIso8601String(),
+          'rooms': [for (final r in rooms) r.toJson()],
+        }),
+      );
+    } catch (e) {
+      debugPrint('Room cache write failed: $e');
+    }
+  }
+
+  // Test hooks. These parsers stay private because only [loadRooms]
+  // should drive them; tests hand them saved copies of the real sheets
+  // instead of fetching over the network.
+
+  /// Parses one day's Computing htmlview page for rooms.
+  @visibleForTesting
+  List<RoomOccupancy> debugParseRoomsComputingHtml(
+    String html,
+    String day, {
+    String schoolId = 'computing',
+  }) => _parseRoomsComputing(_parseHtmlTable(html).grid, day, schoolId);
+
+  /// Parses the Computing CSV fallback for rooms.
+  @visibleForTesting
+  List<RoomOccupancy> debugParseRoomsComputingCsv(
+    String csv,
+    String day, {
+    String schoolId = 'computing',
+  }) => _parseRoomsComputing(_asGrid(_parseCsv(csv)), day, schoolId);
+
+  /// Parses an Engineering htmlview page for rooms (all days at once).
+  @visibleForTesting
+  List<RoomOccupancy> debugParseRoomsEngineeringHtml(
+    String html, {
+    String schoolId = 'engineering',
+  }) => _parseRoomsDayBlocks(_parseHtmlTable(html).grid, schoolId);
+
+  /// Parses the Management CSV for rooms (all days at once).
+  @visibleForTesting
+  List<RoomOccupancy> debugParseRoomsManagementCsv(
+    String csv, {
+    String schoolId = 'management',
+  }) => _parseRoomsDayBlocks(_asGrid(_parseCsv(csv)), schoolId);
 
   // ================= CACHE =================
 
