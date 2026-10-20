@@ -53,7 +53,9 @@ class _CounterScreenState extends State<CounterScreen> {
     _titleController = TextEditingController(text: widget.note.title);
     _counterItems = List.from(widget.note.counterList);
     if (_counterItems.isEmpty) _counterItems.add(CounterItem(label: ""));
-    for (var _ in _counterItems) _focusNodes.add(FocusNode());
+    for (var _ in _counterItems) {
+      _focusNodes.add(FocusNode());
+    }
     // The Note object this screen was built with can be stale — e.g. the
     // widget adjusted a count after this note was last loaded into
     // whatever list handed it to us. _save() overwrites the whole
@@ -91,7 +93,9 @@ class _CounterScreenState extends State<CounterScreen> {
   @override
   void dispose() {
     _titleController.dispose();
-    for (var f in _focusNodes) f.dispose();
+    for (var f in _focusNodes) {
+      f.dispose();
+    }
     super.dispose();
   }
 
@@ -140,8 +144,9 @@ class _CounterScreenState extends State<CounterScreen> {
       _focusNodes.removeAt(index);
       if (index > 0) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_focusNodes[index - 1].canRequestFocus)
+          if (_focusNodes[index - 1].canRequestFocus) {
             _focusNodes[index - 1].requestFocus();
+          }
         });
       }
     });

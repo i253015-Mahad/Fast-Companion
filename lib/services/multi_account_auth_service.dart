@@ -134,7 +134,7 @@ class MultiAccountAuthService {
     final GoogleSignInAccount pickedUser = await GoogleSignIn.instance
         .authenticate();
     final GoogleSignInAuthentication googleAuth =
-        await pickedUser.authentication;
+        pickedUser.authentication;
     final clientAuth = await pickedUser.authorizationClient.authorizeScopes([
       'email',
       'profile',

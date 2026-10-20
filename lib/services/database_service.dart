@@ -190,7 +190,9 @@ class DatabaseService {
         if (raw is Map) {
           raw.forEach(parse);
         } else if (raw is List) {
-          for (int i = 0; i < raw.length; i++) parse(i, raw[i]);
+          for (int i = 0; i < raw.length; i++) {
+            parse(i, raw[i]);
+          }
         }
         fetchedWithTime.sort((a, b) => a.key.compareTo(b.key));
         final fetched = fetchedWithTime.map((e) => e.value).toList();

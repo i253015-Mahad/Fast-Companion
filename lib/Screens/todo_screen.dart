@@ -37,8 +37,12 @@ class _TodoScreenState extends State<TodoScreen> {
     _titleController = TextEditingController(text: widget.note.title);
     _todoItems = List.from(widget.note.todoList);
     if (_todoItems.isEmpty) _todoItems.add(TodoItem(text: ""));
-    for (var _ in _todoItems) _focusNodes.add(FocusNode());
-    for (final item in _todoItems) _assignRank(item); // NEW
+    for (var _ in _todoItems) {
+      _focusNodes.add(FocusNode());
+    }
+    for (final item in _todoItems) {
+      _assignRank(item); // NEW
+    }
     _regroup(); // NEW
     // The Note object this screen was built with can be stale — e.g. the
     // widget checked off an item after this note was last loaded into
@@ -66,7 +70,9 @@ class _TodoScreenState extends State<TodoScreen> {
       // Fresh instances, so the old ranks are meaningless now.
       _rank.clear(); // NEW
       _nextRank = 0; // NEW
-      for (final item in _todoItems) _assignRank(item); // NEW
+      for (final item in _todoItems) {
+        _assignRank(item); // NEW
+      }
       for (final f in _focusNodes) {
         f.dispose();
       }
@@ -80,7 +86,9 @@ class _TodoScreenState extends State<TodoScreen> {
   @override
   void dispose() {
     _titleController.dispose();
-    for (var f in _focusNodes) f.dispose();
+    for (var f in _focusNodes) {
+      f.dispose();
+    }
     super.dispose();
   }
 
@@ -196,8 +204,9 @@ class _TodoScreenState extends State<TodoScreen> {
       // unchecked one, so deleting a checked item doesn't pop up the keyboard.
       if (!wasDone && index > 0) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_focusNodes[index - 1].canRequestFocus)
+          if (_focusNodes[index - 1].canRequestFocus) {
             _focusNodes[index - 1].requestFocus();
+          }
         });
       }
     });

@@ -60,7 +60,9 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
     _timedItems = List.from(widget.note.todoList);
     // No auto-created rows: an empty note stays empty until the user adds a
     // task themselves (see the add button / "next" flow).
-    for (var _ in _timedItems) _focusNodes.add(FocusNode());
+    for (var _ in _timedItems) {
+      _focusNodes.add(FocusNode());
+    }
     _sortTasksByUrgency();
     _tickerTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _sortTasksByUrgency());
@@ -101,7 +103,9 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
   void dispose() {
     _tickerTimer?.cancel();
     _titleController.dispose();
-    for (var f in _focusNodes) f.dispose();
+    for (var f in _focusNodes) {
+      f.dispose();
+    }
     super.dispose();
   }
 

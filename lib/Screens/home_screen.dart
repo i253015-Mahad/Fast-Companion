@@ -1553,7 +1553,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     child: Container(
                       width: MediaQuery.of(context).size.width,
                       height: MediaQuery.of(context).size.height,
-                      color: Colors.black.withOpacity(0.6),
+                      color: Colors.black.withValues(alpha: 0.6),
                     ),
                   ),
                 Padding(
@@ -1740,7 +1740,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         decoration: BoxDecoration(
           color: AppColors.navBar,
           borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: iconColor.withOpacity(0.25), width: 1.5),
+          border: Border.all(color: iconColor.withValues(alpha: 0.25), width: 1.5),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
