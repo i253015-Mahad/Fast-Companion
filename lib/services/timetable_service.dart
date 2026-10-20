@@ -109,6 +109,18 @@ class _RoomDraft {
   _RoomDraft(this.isLab);
 }
 
+/// One school's rooms for one day, and how fresh they are.
+///
+/// [fromCache] is what lets a screen say it is showing a saved copy
+/// instead of presenting hours-old rooms as if they had just been read.
+/// A record rather than a class because the three values only ever
+/// travel together.
+typedef RoomDay = ({
+  List<RoomOccupancy> rooms,
+  DateTime fetchedAt,
+  bool fromCache,
+});
+
 /// Fetches the university's published Google Sheets timetables and turns
 /// them into [TimetableEntry]s.
 ///
@@ -1736,6 +1748,10 @@ class TimetableService {
   /// cache uses — both are read from the same sheets.
   static const Duration _roomsTtl = Duration(hours: 6);
 
+  /// A fetch time that reads as "never", so a list with no history
+  /// behind it hides the footer rather than dating itself to 1970.
+  static final _epoch = DateTime.fromMillisecondsSinceEpoch(0);
+
   /// The weekday names the sheets use for their day blocks.
   static const List<String> _weekdays = [
     'Monday',
@@ -1784,30 +1800,72 @@ class TimetableService {
   ///
   /// [day] is a full weekday name. Sunday is on no sheet, so it returns
   /// empty rather than borrowing another day's rooms.
-  Future<List<RoomOccupancy>> loadRooms(
+  Future<RoomDay> loadRooms(
     SchoolConfig school,
     String day, {
     bool forceRefresh = false,
   }) async {
-    if (!school.available || !_weekdays.contains(day)) return const [];
+    if (!school.available || !_weekdays.contains(day)) {
+      return (
+        rooms: const <RoomOccupancy>[],
+        fetchedAt: _epoch,
+        fromCache: false,
+      );
+    }
 
     final cached = await _readRoomCache(school.id, day);
     if (!forceRefresh &&
         cached != null &&
         DateTime.now().difference(cached.$1) < _roomsTtl) {
-      return cached.$2;
+      return (rooms: cached.$2, fetchedAt: cached.$1, fromCache: true);
     }
 
     try {
       final rooms = await _fetchRooms(school, day);
+      final fetchedAt = DateTime.now();
       await _writeRoomCache(school.id, day, rooms);
-      return rooms;
+      return (rooms: rooms, fetchedAt: fetchedAt, fromCache: false);
     } catch (e) {
       // An hour-old list beats none at all — but only when there is one
       // to fall back on.
-      if (cached != null) return cached.$2;
+      if (cached != null) {
+        return (rooms: cached.$2, fetchedAt: cached.$1, fromCache: true);
+      }
       rethrow;
     }
+  }
+
+  /// Every room published for [day] across all three schools, with a
+  /// room two sheets share booked against both of their books.
+  ///
+  /// The union is about correctness and not only coverage: `C-405` sits
+  /// in Computing's and Management's Wednesday grids and `C-406`/`C-407`
+  /// in Thursday's, so listing each sheet's copy side by side would
+  /// offer a room that a class from the other school is sitting in.
+  ///
+  /// One day at a time, because Computing spreads its weekdays over six
+  /// tabs — asking for the whole week would be six requests to show one
+  /// day's rooms.
+  Future<RoomDay> loadAllRooms(String day, {bool forceRefresh = false}) async {
+    final results = await Future.wait([
+      for (final school in kSchools)
+        loadRooms(school, day, forceRefresh: forceRefresh),
+    ]);
+
+    var fetchedAt = _epoch;
+    var fromCache = true;
+    for (final r in results) {
+      if (r.fetchedAt.isAfter(fetchedAt)) fetchedAt = r.fetchedAt;
+      // Fresh if any school answered from the network: a list that mixes
+      // a live fetch with a saved copy is still partly live.
+      if (!r.fromCache) fromCache = false;
+    }
+
+    return (
+      rooms: coalesceRooms(results.expand((r) => r.rooms)),
+      fetchedAt: fetchedAt,
+      fromCache: fromCache,
+    );
   }
 
   Future<List<RoomOccupancy>> _fetchRooms(

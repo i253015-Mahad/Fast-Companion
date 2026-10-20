@@ -13,6 +13,7 @@ import 'todo_screen.dart';
 import 'counter_screen.dart';
 import 'timed_task_screen.dart';
 import 'timetable_screen.dart';
+import 'rooms_screen.dart';
 import 'flex_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -45,10 +46,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final TextEditingController searchController = TextEditingController();
   String searchQuery = "";
 
-  // Bottom nav: 0 = Notes, 1 = Timetable, 2 = Rooms (placeholder),
-  // 3 = Flex (the live portal in a WebView).
-  // Held in an IndexedStack so the Notes state (search text, scroll,
-  // loaded notes) survives a round trip to another tab.
+  // Bottom nav: 0 = Notes, 1 = Timetable, 2 = Rooms (free rooms, by
+  // block and day), 3 = Flex (the live portal in a WebView).
+  // Held in an IndexedStack so each tab's state — search text, scroll
+  // position, loaded sheets — survives a round trip to another. Every
+  // child is built at startup, which is why Rooms is handed _navIndex ==
+  // 2 and fetches only once it is the tab on screen.
   int _navIndex = 0;
 
   /// Which child of the IndexedStack below is the Flex tab.
@@ -1529,7 +1532,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
             const TimetableScreen(),
-            _buildRoomsPlaceholder(),
+            // Not const: the screen only fetches once its tab is the one
+            // showing, so it carries that state itself.
+            RoomsScreen(active: _navIndex == 2),
             const FlexScreen(),
           ],
         ),
@@ -1715,32 +1720,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Placeholder for the not-yet-built Rooms tab.
-  Widget _buildRoomsPlaceholder() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: const [
-          Icon(
-            Icons.meeting_room_rounded,
-            size: 56,
-            color: Colors.lightBlueAccent,
-          ),
-          SizedBox(height: 16),
-          Text(
-            "Rooms Feature coming soon!",
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
             ),
           ),
         ],

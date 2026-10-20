@@ -20,8 +20,10 @@
 // saved copy is present.
 import 'dart:io';
 
+import 'package:fast_companion/Screens/rooms_screen.dart';
 import 'package:fast_companion/models/room_occupancy.dart';
 import 'package:fast_companion/services/timetable_service.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Escapes cells into one CSV row the way gviz exports it.
@@ -618,6 +620,70 @@ $engHeader
       expect(rooms.single.room, 'B-227');
       expect(rooms.map((x) => x.room), isNot(contains('Room')));
       expect(rooms.map((x) => x.room), isNot(contains('Classes')));
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // The screen's own wiring. The data layer is covered above; what is
+  // left is that the tab knows not to ask for anything until it is the
+  // one being looked at.
+  // ---------------------------------------------------------------------
+
+  group('the tab itself', () {
+    test('a day with no sheet asks nothing of the network', () async {
+      final result = await TimetableService.instance.loadAllRooms('Sunday');
+      expect(result.rooms, isEmpty);
+      expect(result.fromCache, isFalse);
+      expect(
+        result.fetchedAt.millisecondsSinceEpoch,
+        0,
+        reason: 'nothing was fetched, so nothing should claim to be fresh',
+      );
+    });
+
+    testWidgets('offers its controls before any sheet has been read', (
+      tester,
+    ) async {
+      // Not active, so nothing is fetched — the tab proves itself by
+      // staying quiet until it is the one on screen. The app opens on
+      // Notes, so this is the state every student sees first.
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: RoomsScreen(active: false))),
+      );
+      await tester.pump();
+
+      expect(find.text('Rooms'), findsOneWidget);
+      expect(find.text('BLOCK'), findsOneWidget);
+      expect(find.text('KIND'), findsOneWidget);
+      expect(find.text('WHEN'), findsOneWidget);
+      expect(find.text('Monday'), findsOneWidget);
+      expect(find.text('Labs'), findsOneWidget);
+      expect(find.text('Pick a time…'), findsOneWidget);
+
+      // No count and no list: the sheets have not been asked for, so
+      // there is nothing to offer and nothing to report an error about.
+      expect(find.textContaining('free now'), findsNothing);
+      expect(find.byType(RefreshIndicator), findsNothing);
+
+      // Unmount so the screen's clock does not outlive the test.
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('a tab that starts as the one on screen still opens', (
+      tester,
+    ) async {
+      // The app never does this — it opens on Notes — but the screen
+      // must not depend on it. Loading has to be able to begin from
+      // initState, where the skeleton paints before any of it resolves.
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: RoomsScreen(active: true))),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Rooms'), findsOneWidget);
+      expect(find.byType(RefreshIndicator), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
     });
   });
 
