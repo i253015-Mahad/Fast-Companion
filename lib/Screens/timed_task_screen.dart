@@ -265,6 +265,9 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (date == null) return null;
+    // The date dialog has just been dismissed, and the time picker below
+    // needs a context that outlived it.
+    if (!context.mounted) return null;
     final time = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.now(),

@@ -244,6 +244,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     final session = await _authService.addAccount();
                     if (session == null || !mounted) return;
                     await _activateSession(session);
+                    // The switcher sheet was popped on the first line of
+                    // this handler, so this is the caller's context being
+                    // reached through — and the switch may have outlived it.
+                    if (!scaffoldContext.mounted) return;
                     ScaffoldMessenger.of(scaffoldContext).showSnackBar(
                       SnackBar(
                         content: Text("Switched to: ${session.email}"),
@@ -251,7 +255,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     );
                   } catch (e) {
-                    if (mounted) {
+                    if (mounted && scaffoldContext.mounted) {
                       ScaffoldMessenger.of(scaffoldContext).showSnackBar(
                         SnackBar(content: Text("Could not add account: $e")),
                       );
@@ -307,6 +311,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       _isMenuOpen = false;
                     });
                   }
+                  // The sign-out above awaits, so the dialog this context
+                  // belongs to may already be gone.
+                  if (!context.mounted) return;
                   Navigator.pop(context);
                 },
               ),
@@ -834,7 +841,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       'timestamp': ServerValue.timestamp,
                     })
                     .catchError((e) {
-                      if (mounted) {
+                      if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
@@ -933,7 +940,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       'timestamp': ServerValue.timestamp,
                     })
                     .catchError((e) {
-                      if (mounted) {
+                      if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
@@ -1032,7 +1039,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       'timestamp': ServerValue.timestamp,
                     })
                     .catchError((e) {
-                      if (mounted) {
+                      if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
@@ -1131,7 +1138,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       'timestamp': ServerValue.timestamp,
                     })
                     .catchError((e) {
-                      if (mounted) {
+                      if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
@@ -1367,6 +1374,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                             .addAccount();
                                         if (session == null || !mounted) return;
                                         await _activateSession(session);
+                                        if (!context.mounted) return;
                                         ScaffoldMessenger.of(
                                           context,
                                         ).showSnackBar(
@@ -1377,7 +1385,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                           ),
                                         );
                                       } catch (e) {
-                                        if (!mounted) return;
+                                        if (!context.mounted) return;
                                         ScaffoldMessenger.of(
                                           context,
                                         ).showSnackBar(
