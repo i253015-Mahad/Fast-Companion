@@ -34,7 +34,7 @@ class LocalStorageService {
           .map((e) => Note.fromJson(Map<String, dynamic>.from(jsonDecode(e))))
           .toList();
     } catch (e) {
-      print("Local cache read failed: $e");
+      debugPrint("Local cache read failed: $e");
       return [];
     }
   }
@@ -84,7 +84,7 @@ class LocalStorageService {
 
       return raw.map((e) => Map<String, String>.from(jsonDecode(e))).toList();
     } catch (e) {
-      print("Account cache read failed: $e");
+      debugPrint("Account cache read failed: $e");
       return [];
     }
   }

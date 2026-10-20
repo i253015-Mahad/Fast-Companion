@@ -16,6 +16,7 @@
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 
 import 'firebase_options.dart';
@@ -59,7 +60,7 @@ Future<void> _refreshWidgetIfIdle(String uid, Note note) async {
   final pending = await HomeWidget.getWidgetData<int>(_kPendingTaps) ?? 0;
   // This tap itself still counts as 1 until _finishTap() runs.
   if (pending > 1) {
-    print(
+    debugPrint(
       '⏭️ widget background: $pending taps pending, skipping widget refresh',
     );
     return;
@@ -77,7 +78,7 @@ Future<void> _finishTap() async {
 }
 
 Future<void> _handleTap(Uri? uri) async {
-  print('🔘 widget background action fired: $uri');
+  debugPrint('🔘 widget background action fired: $uri');
 
   // Kept so that if anything goes wrong we can put the widget back to the
   // real saved value (the Kotlin side already showed the tap optimistically).
@@ -86,14 +87,14 @@ Future<void> _handleTap(Uri? uri) async {
 
   try {
     if (uri == null) {
-      print('⚠️ widget background: uri was null, aborting');
+      debugPrint('⚠️ widget background: uri was null, aborting');
       return;
     }
 
     final uid = uri.queryParameters['uid'];
     final noteId = uri.queryParameters['noteId'];
     if (uid == null || uid.isEmpty || noteId == null || noteId.isEmpty) {
-      print('⚠️ widget background: missing uid/noteId in $uri, aborting');
+      debugPrint('⚠️ widget background: missing uid/noteId in $uri, aborting');
       return;
     }
 
@@ -106,12 +107,12 @@ Future<void> _handleTap(Uri? uri) async {
       authTimeout: const Duration(seconds: 8),
     );
     final gotSession = MultiAccountAuthService.instance.sessionFor(uid) != null;
-    print('🔎 widget background: session for $uid restored? $gotSession');
+    debugPrint('🔎 widget background: session for $uid restored? $gotSession');
 
     final notes = await LocalStorageService.loadNotes(uid);
     final idx = notes.indexWhere((n) => n.id == noteId);
     if (idx == -1) {
-      print(
+      debugPrint(
         '⚠️ widget background: note $noteId not found for uid $uid, aborting',
       );
       return;
@@ -125,13 +126,13 @@ Future<void> _handleTap(Uri? uri) async {
     if (uri.host == 'toggletodo') {
       final index = int.tryParse(uri.queryParameters['index'] ?? '') ?? -1;
       if (index < 0 || index >= note.todoList.length) {
-        print('⚠️ widget background: todo index $index out of range, aborting');
+        debugPrint('⚠️ widget background: todo index $index out of range, aborting');
         await _refreshWidgetIfIdle(uid, note); // undo the instant change
         return;
       }
 
       if (session == null) {
-        print(
+        debugPrint(
           '⚠️ widget background: no live session for $uid, aborting todo toggle',
         );
         await _refreshWidgetIfIdle(uid, note); // undo the instant change
@@ -162,16 +163,16 @@ Future<void> _handleTap(Uri? uri) async {
             .timeout(const Duration(seconds: 15));
         if (result.committed) {
           resultDone = result.snapshot.value == true;
-          print(
+          debugPrint(
             '✅ widget background: todo transaction committed, isDone=$resultDone',
           );
         } else {
-          print(
+          debugPrint(
             '⚠️ widget background: todo transaction not committed, using local fallback',
           );
         }
       } catch (e) {
-        print(
+        debugPrint(
           '⚠️ widget background: todo transaction failed, using local fallback: $e',
         );
       }
@@ -210,7 +211,7 @@ Future<void> _handleTap(Uri? uri) async {
       await LocalStorageService.saveNotes(uid, notes);
       // CHANGED: the widget is refreshed BEFORE the slower cloud "body" update.
       await _refreshWidgetIfIdle(uid, updatedNote);
-      print('✅ widget background: toggled todo $index on note $noteId');
+      debugPrint('✅ widget background: toggled todo $index on note $noteId');
 
       // Keeps the cloud copy's preview body and frozen countdown in step with
       // the in-app screens. A null value deletes the key (un-ticking).
@@ -227,13 +228,13 @@ Future<void> _handleTap(Uri? uri) async {
             })
             .timeout(const Duration(seconds: 15));
       } catch (e) {
-        print('⚠️ widget background: body/remaining update failed: $e');
+        debugPrint('⚠️ widget background: body/remaining update failed: $e');
       }
     } else if (uri.host == 'adjustcounter') {
       final index = int.tryParse(uri.queryParameters['index'] ?? '') ?? -1;
       final delta = int.tryParse(uri.queryParameters['delta'] ?? '0') ?? 0;
       if (index < 0 || index >= note.counterList.length) {
-        print(
+        debugPrint(
           '⚠️ widget background: counter index $index out of range, aborting',
         );
         await _refreshWidgetIfIdle(uid, note); // undo the instant change
@@ -241,7 +242,7 @@ Future<void> _handleTap(Uri? uri) async {
       }
 
       if (session == null) {
-        print(
+        debugPrint(
           '⚠️ widget background: no live session for $uid, aborting counter adjust',
         );
         await _refreshWidgetIfIdle(uid, note); // undo the instant change
@@ -273,16 +274,16 @@ Future<void> _handleTap(Uri? uri) async {
             .timeout(const Duration(seconds: 15));
         if (result.committed && result.snapshot.value != null) {
           resultCount = (result.snapshot.value as num).toInt();
-          print(
+          debugPrint(
             '✅ widget background: counter transaction committed, new value $resultCount',
           );
         } else {
-          print(
+          debugPrint(
             '⚠️ widget background: counter transaction not committed, using local fallback',
           );
         }
       } catch (e) {
-        print(
+        debugPrint(
           '⚠️ widget background: counter transaction failed, using local fallback: $e',
         );
       }
@@ -309,7 +310,7 @@ Future<void> _handleTap(Uri? uri) async {
       await LocalStorageService.saveNotes(uid, notes);
       // CHANGED: the widget is refreshed BEFORE the slower cloud "body" update.
       await _refreshWidgetIfIdle(uid, updatedNote);
-      print(
+      debugPrint(
         '✅ widget background: adjusted counter $index by $delta on note $noteId',
       );
 
@@ -323,14 +324,14 @@ Future<void> _handleTap(Uri? uri) async {
             .update({'body': newBody})
             .timeout(const Duration(seconds: 15));
       } catch (e) {
-        print('⚠️ widget background: body update failed: $e');
+        debugPrint('⚠️ widget background: body update failed: $e');
       }
     } else {
-      print('⚠️ widget background: unrecognized action host "${uri.host}"');
+      debugPrint('⚠️ widget background: unrecognized action host "${uri.host}"');
     }
   } catch (e, st) {
-    print('❌ widget background action FAILED: $e');
-    print(st);
+    debugPrint('❌ widget background action FAILED: $e');
+    debugPrint(st.toString());
     // Put the widget back to the last real saved value.
     if (revertUid != null && revertNote != null) {
       try {

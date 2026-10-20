@@ -2,6 +2,7 @@
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import '../models/note.dart';
 import 'local_storage_service.dart';
 import 'multi_account_auth_service.dart';
@@ -65,7 +66,7 @@ class DatabaseService {
     await LocalStorageService.upsertNote(targetUid, localNote);
 
     if (!_isSignedIn(targetUid)) {
-      print("ℹ️ Offline mode: note saved locally with id $localKey");
+      debugPrint("ℹ️ Offline mode: note saved locally with id $localKey");
       return localKey;
     }
 
@@ -99,10 +100,10 @@ class DatabaseService {
             counterList: [],
           );
           await LocalStorageService.upsertNote(targetUid, realNote);
-          print("✅ SAVE SUCCESS: Note id ${newNoteRef.key}");
+          debugPrint("✅ SAVE SUCCESS: Note id ${newNoteRef.key}");
         })
         .catchError((e) {
-          print("⚠️ Firebase write failed/queued, kept local copy: $e");
+          debugPrint("⚠️ Firebase write failed/queued, kept local copy: $e");
         });
 
     // Local storage currently holds the note under `localKey` — the swap to
@@ -201,11 +202,11 @@ class DatabaseService {
         // bring the scheduled reminders in line with it. Not awaited; the
         // fetch itself already succeeded.
         ReminderNotificationService.syncAll().catchError((e) {
-          print('⚠️ reminder sync after cloud fetch failed: $e');
+          debugPrint('⚠️ reminder sync after cloud fetch failed: $e');
         });
         return; // success — stop retrying
       } catch (e) {
-        print('⚠️ syncFromFirebase attempt $attempt failed: $e');
+        debugPrint('⚠️ syncFromFirebase attempt $attempt failed: $e');
         if (attempt == maxAttempts) return;
         await Future.delayed(Duration(milliseconds: 400 * attempt));
       }
@@ -249,7 +250,7 @@ class DatabaseService {
       try {
         await HomeWidgetService.refreshNote(targetUid, updated);
       } catch (e) {
-        print('⚠️ widget refresh after save failed: $e');
+        debugPrint('⚠️ widget refresh after save failed: $e');
       }
       // Reminders follow the note: re-sync this note's scheduled
       // notifications after every save (new task, new deadline, item
@@ -259,7 +260,7 @@ class DatabaseService {
         targetUid,
         noteId,
       ).catchError((e) {
-        print('⚠️ reminder sync failed: $e');
+        debugPrint('⚠️ reminder sync failed: $e');
       });
     }
 
@@ -275,18 +276,18 @@ class DatabaseService {
     if (awaitRemote) {
       try {
         await remoteWrite;
-        print("✅ DATABASE UPDATE SUCCESS for note: $noteId");
+        debugPrint("✅ DATABASE UPDATE SUCCESS for note: $noteId");
       } catch (e) {
-        print("⚠️ Firebase update failed (awaited), local cache updated: $e");
+        debugPrint("⚠️ Firebase update failed (awaited), local cache updated: $e");
       }
     } else {
       // Not awaited — offline, this Future won't resolve until reconnect,
       // which would freeze whatever called updateNote() (tick marks, the
       // back button, counter taps) until the connection came back.
       remoteWrite
-          .then((_) => print("✅ DATABASE UPDATE SUCCESS for note: $noteId"))
+          .then((_) => debugPrint("✅ DATABASE UPDATE SUCCESS for note: $noteId"))
           .catchError((e) {
-            print("⚠️ Firebase update failed/queued, local cache updated: $e");
+            debugPrint("⚠️ Firebase update failed/queued, local cache updated: $e");
           });
     }
   }
@@ -328,7 +329,7 @@ class DatabaseService {
         .update({'isStarred': newStatus})
         .timeout(const Duration(seconds: 15))
         .catchError((e) {
-          print(
+          debugPrint(
             "⚠️ Firebase star toggle failed/queued, local cache updated: $e",
           );
         });
@@ -344,7 +345,7 @@ class DatabaseService {
       targetUid,
       noteId,
     ).catchError((e) {
-      print('⚠️ reminder cancel failed: $e');
+      debugPrint('⚠️ reminder cancel failed: $e');
     });
 
     // Not awaited — same reasoning as above. The note is already gone
@@ -359,7 +360,7 @@ class DatabaseService {
         .remove()
         .timeout(const Duration(seconds: 15))
         .catchError((e) {
-          print(
+          debugPrint(
             "⚠️ Firebase delete failed/queued, removed from local cache: $e",
           );
         });
