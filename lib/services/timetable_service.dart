@@ -217,10 +217,6 @@ class TimetableService {
     }
   }
 
-  /// Drops the in-memory copy (the cache file is kept) so the next
-  /// [load] re-reads it.
-  void invalidate(String schoolId) => _memory.remove(schoolId);
-
   /// Keeps only the entries a student would see, matching the chosen
   /// department, batch and section. Any empty filter passes everything
   /// for that dimension.
@@ -633,11 +629,6 @@ class TimetableService {
   @visibleForTesting
   List<TimetableEntry> debugParseComputingCsv(String csv, String day) =>
       _parseComputing(csv, day);
-
-  /// Parses the Engineering CSV fallback (all days at once).
-  @visibleForTesting
-  List<TimetableEntry> debugParseEngineeringCsv(String csv) =>
-      _parseEngineering(csv);
 
   /// Computing day-tab grid read from htmlview: the header row holds the
   /// time slots, each data row is a room with one course cell per slot.

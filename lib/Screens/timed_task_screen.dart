@@ -57,7 +57,7 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.note.title);
-    _timedItems = List.from(widget.note.todoList ?? []);
+    _timedItems = List.from(widget.note.todoList);
     // No auto-created rows: an empty note stays empty until the user adds a
     // task themselves (see the add button / "next" flow).
     for (var _ in _timedItems) _focusNodes.add(FocusNode());

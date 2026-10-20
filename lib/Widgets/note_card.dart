@@ -94,7 +94,7 @@ class NoteCard extends StatelessWidget {
   }
 
   Widget _buildTodoPreview() {
-    final list = note.todoList ?? [];
+    final list = note.todoList;
     if (list.isEmpty) {
       return const Text(
         "Empty list",
@@ -141,7 +141,7 @@ class NoteCard extends StatelessWidget {
 
   // New layout summary view helper parsing metric increments inside cards
   Widget _buildCounterPreview() {
-    final list = note.counterList ?? [];
+    final list = note.counterList;
     if (list.isEmpty) {
       return const Text(
         "No counters",

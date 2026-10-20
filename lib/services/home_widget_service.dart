@@ -300,12 +300,4 @@ class HomeWidgetService {
     return result;
   }
 
-  /// One-time cleanup: forgets every stored widget. Not called anywhere.
-  static Future<void> clearAllWidgets() async {
-    for (final id in await widgetIds()) {
-      await HomeWidget.saveWidgetData<String>(_payloadKey(id), null);
-    }
-    await HomeWidget.saveWidgetData<String>(_kIds, '');
-    await HomeWidget.updateWidget(androidName: _androidWidgetName);
-  }
 }

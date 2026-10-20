@@ -61,11 +61,6 @@ class LocalStorageService {
     await saveNotes(uid, notes);
   }
 
-  static Future<void> clearNotes(String uid) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_notesKey(uid));
-  }
-
   // ================= ACCOUNTS =================
 
   static Future<void> saveAccounts(List<Map<String, String>> accounts) async {

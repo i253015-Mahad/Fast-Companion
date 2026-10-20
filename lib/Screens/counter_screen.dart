@@ -51,7 +51,7 @@ class _CounterScreenState extends State<CounterScreen> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.note.title);
-    _counterItems = List.from(widget.note.counterList ?? []);
+    _counterItems = List.from(widget.note.counterList);
     if (_counterItems.isEmpty) _counterItems.add(CounterItem(label: ""));
     for (var _ in _counterItems) _focusNodes.add(FocusNode());
     // The Note object this screen was built with can be stale — e.g. the

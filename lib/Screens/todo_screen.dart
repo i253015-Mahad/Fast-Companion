@@ -35,7 +35,7 @@ class _TodoScreenState extends State<TodoScreen> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.note.title);
-    _todoItems = List.from(widget.note.todoList ?? []);
+    _todoItems = List.from(widget.note.todoList);
     if (_todoItems.isEmpty) _todoItems.add(TodoItem(text: ""));
     for (var _ in _todoItems) _focusNodes.add(FocusNode());
     for (final item in _todoItems) _assignRank(item); // NEW

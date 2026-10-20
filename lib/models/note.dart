@@ -107,23 +107,4 @@ class Note {
     );
   }
 
-  Note copyWith({
-    String? id,
-    String? title,
-    String? body,
-    String? type,
-    bool? isStarred,
-    List<TodoItem>? todoList,
-    List<CounterItem>? counterList,
-  }) {
-    return Note(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      body: body ?? this.body,
-      type: type ?? this.type,
-      isStarred: isStarred ?? this.isStarred,
-      todoList: todoList ?? List<TodoItem>.from(this.todoList),
-      counterList: counterList ?? List<CounterItem>.from(this.counterList),
-    );
-  }
 }
