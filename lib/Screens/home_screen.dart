@@ -558,9 +558,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// nothing at all.
   Future<void> _pollFlexAlerts() async {
     if (_flexPolling) return;
+
+    // The account has to be resolved before a single request goes out.
+    //
+    // Session restore runs in the background, so on a cold start the Flex
+    // tab is often tapped while it is still going, and _activeNotesUid is
+    // still null. The old fallback to _dbService.uid did not help: that
+    // reports the literal sentinel "anonymous" whenever Firebase has no
+    // current user, which is exactly the cold-start window. A poll in it
+    // spends four of the portal's five requests writing a snapshot under a
+    // key nobody will ever read, and leaves the real account's snapshot
+    // uncompared — so a student whose habit is to open the app straight
+    // onto the Flex tab would forfeit most of the session on every launch
+    // and still not be told what changed.
+    //
+    // Skipping costs only that one visit; the next one polls properly.
+    final uid = _activeNotesUid;
+    if (uid == null) return;
+
     _flexPolling = true;
     try {
-      await FlexAlertPoller().poll(_activeNotesUid ?? _dbService.uid);
+      await FlexAlertPoller().poll(uid);
     } catch (e) {
       // A poll is a background nicety. If it throws it must not take the
       // screen with it — the student still has the portal in the WebView.
