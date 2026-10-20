@@ -652,13 +652,15 @@ $engHeader
       );
       await tester.pump();
 
-      expect(find.text('Rooms'), findsOneWidget);
       expect(find.text('BLOCK'), findsOneWidget);
       expect(find.text('KIND'), findsOneWidget);
       expect(find.text('WHEN'), findsOneWidget);
       expect(find.text('Monday'), findsOneWidget);
       expect(find.text('Labs'), findsOneWidget);
       expect(find.text('Pick a time…'), findsOneWidget);
+
+      // No title to look for: the wayfinding tab's shifter heads the
+      // screen now, and this screen is only ever shown under it.
 
       // No count and no list: the sheets have not been asked for, so
       // there is nothing to offer and nothing to report an error about.
@@ -680,7 +682,10 @@ $engHeader
       );
 
       expect(tester.takeException(), isNull);
-      expect(find.text('Rooms'), findsOneWidget);
+      // The header is above the loading skeleton, so it is the proof the
+      // screen built at all — the title the other test used to lean on
+      // now belongs to the shifter.
+      expect(find.text('BLOCK'), findsOneWidget);
       expect(find.byType(RefreshIndicator), findsNothing);
 
       await tester.pumpWidget(const SizedBox.shrink());

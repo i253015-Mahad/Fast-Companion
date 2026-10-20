@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import '../models/room_occupancy.dart';
 import '../services/timetable_service.dart';
 import '../theme/app_colors.dart';
-import '../theme/app_text_styles.dart';
 
 /// Which classrooms and labs are free, by building and by day.
 ///
@@ -24,7 +23,11 @@ import '../theme/app_text_styles.dart';
 /// sheet named it, and asking either school alone would answer about it
 /// from half its bookings.
 class RoomsScreen extends StatefulWidget {
-  const RoomsScreen({super.key, required this.active});
+  const RoomsScreen({
+    super.key,
+    required this.active,
+    this.requestedBlock,
+  });
 
   /// Whether this tab is the one on screen.
   ///
@@ -33,6 +36,16 @@ class RoomsScreen extends StatefulWidget {
   /// opened it. It stays loaded once it has been, because a student
   /// switching tabs should not re-download the week to come back.
   final bool active;
+
+  /// A building letter handed over from the teachers half of this tab —
+  /// "see block D" on someone's office card.
+  ///
+  /// Reconciled in [didUpdateWidget] rather than read in the constructor,
+  /// for the same reason [active] is: the wrapper already exists by the
+  /// time a card is tapped, so this can only arrive as a change. Selecting
+  /// a block filters a list already loaded, so acting on it never
+  /// refetches.
+  final String? requestedBlock;
 
   @override
   State<RoomsScreen> createState() => _RoomsScreenState();
@@ -99,6 +112,17 @@ class _RoomsScreenState extends State<RoomsScreen> {
   @override
   void didUpdateWidget(covariant RoomsScreen old) {
     super.didUpdateWidget(old);
+
+    // A block handed over from the teachers half of this tab. Assigned
+    // without setState on purpose: didUpdateWidget runs inside the
+    // parent's build, and this element is rebuilt straight afterwards
+    // anyway, so a setState here would be redundant at best and an
+    // assert about building at worst.
+    final want = widget.requestedBlock;
+    if (want != null && want != old.requestedBlock && want != _block) {
+      _block = want;
+    }
+
     if (widget.active && !old.active) {
       _now = DateTime.now();
       // Nothing is fetched until the tab is opened for the first time —
@@ -335,8 +359,10 @@ class _RoomsScreenState extends State<RoomsScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text('Rooms', style: AppTextStyles.title),
-        const SizedBox(height: 14),
+        // No title of its own: the wayfinding tab's shifter heads the
+        // screen now, and a `Rooms` label underneath it would only
+        // repeat what the selected half already says.
+        const SizedBox(height: 12),
         _filterRow('BLOCK', [
           _pill('All', _block.isEmpty, () => setState(() => _block = '')),
           for (final b in _blocks)
