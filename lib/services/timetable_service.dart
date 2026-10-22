@@ -727,7 +727,9 @@ class TimetableService {
             section: parsed.section,
             program: color.dept.isNotEmpty ? color.dept : prefix,
             batch: color.batch.isNotEmpty ? color.batch : parsed.batch,
-            room: room,
+            // A cell that names its own room is describing a class held
+            // outside this row; the row label is only ever the guess.
+            room: parsed.room.isNotEmpty ? parsed.room : room,
             isLab: parsed.isLab,
             note: parsed.note,
           ),
@@ -1004,7 +1006,8 @@ class TimetableService {
             section: parsed.section,
             program: prefix,
             batch: parsed.batch,
-            room: room,
+            // As in the HTML path: the cell's own room beats the row's.
+            room: parsed.room.isNotEmpty ? parsed.room : room,
             isLab: parsed.isLab,
             note: parsed.note,
           ),
@@ -1433,9 +1436,25 @@ class TimetableService {
     String end,
     bool isLab,
     String note,
+    String room,
   })
   _parseComputingCell(String raw, String slotStart, String slotEnd) {
     var text = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    // The room a class filed under someone else's row really sits in
+    // comes after the class itself — `Pak Studies (SE-B) 11:30-01:15
+    // D-402`. It is lifted off before anything else reads the cell:  // left in place it stays glued to the course as `Pak Studies D-402`
+    // while the entry keeps the row's room, wrong twice over.
+    var room = '';
+    final moved = _roomTailRe.firstMatch(text);
+    // A cell holding nothing but a code is a room label that fell into a
+    // data column, not a class naming its own room, so it is left be.
+    if (moved != null && moved.start > 0) {
+      room = moved.group(1)!.replaceAll(RegExp(r'\s+'), '');
+      text = '${text.substring(0, moved.start)} ${text.substring(moved.end)}'
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+    }
 
     var section = '';
     var batch = '';
@@ -1486,6 +1505,7 @@ class TimetableService {
       end: _normalizeTime(end),
       isLab: RegExp(r'\blab\b', caseSensitive: false).hasMatch(course),
       note: note,
+      room: room,
     );
   }
 
@@ -1738,6 +1758,31 @@ class TimetableService {
     r'(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})',
   );
 
+  /// Matches the room a cell names at its very end, as the sheets
+  /// record a class held outside its row's room — `Pak Studies (SE-B)
+  /// 11:30-01:15 D-402`, sometimes behind a `Room`.
+  ///
+  /// Three digits is what keeps a section off it: `SE-B`, `PHD-A` and
+  /// `AI-A` never match. A lab label that merely embeds a room
+  /// (`Margala 1 (C-209)`) is closed by its bracket before the end, so
+  /// it does not match either.
+  static final RegExp _roomTailRe = RegExp(
+    r'(?:^|\s)(?:Room\s+)?([A-D]\s*-\s*\d{3}(?:\s*[A-Ha-h])?)\s*$',
+  );
+
+  /// The room [text] names at its end, with its spaces squeezed out so
+  /// that `D- 402` and `D-402` book the same room — or `''` when it
+  /// names none.
+  ///
+  /// A cell holding nothing but a code is a room label that fell into a
+  /// data column rather than a class naming its own room, so only a
+  /// code with class text in front of it counts.
+  static String _roomTailOf(String text) {
+    final m = _roomTailRe.firstMatch(text);
+    if (m == null || m.start == 0) return '';
+    return m.group(1)!.replaceAll(RegExp(r'\s+'), '');
+  }
+
   /// Matches Management's bare section codes — `AF07B`, `BBA01B`,
   /// `FT07A/B` — which sit in a period of their own beside the course
   /// they belong to.
@@ -1936,6 +1981,23 @@ class TimetableService {
     return true;
   }
 
+  /// Whether [label] is a room a class can actually be taught in.
+  ///
+  /// Blocks C and D hold their classrooms from the third floor up —
+  /// `C-301` and above. The Computing sheet lists `C-110`, which is not
+  /// a classroom but a store, and offering it as spare sent people to a
+  /// corridor, so every C and D room below the third floor is dropped.
+  ///
+  /// A and B are deliberately untouched: Engineering teaches in B-019
+  /// and B-232, and no floor rule has ever been given for them. The
+  /// match is anchored at the start, so a lab that merely names a room
+  /// (`Margala 1 (C-209)`) still counts as one.
+  static bool _isTeachingRoom(String label) {
+    final m = RegExp(r'^[CD]\s*-\s*(\d{1,3})').firstMatch(label.trim());
+    if (m == null) return true;
+    return int.parse(m.group(1)!) >= 300;
+  }
+
   /// The period a cell at [col] falls in: the last time label at or
   /// before it that still sits after [afterCol], or -1 when there is
   /// none.
@@ -2017,8 +2079,11 @@ class TimetableService {
     // the day free while a booking is in it.
     var start = window.$1;
     var end = window.$2;
-    for (final draft in drafts.values) {
-      for (final r in draft.occupied) {
+    for (final draft in drafts.entries) {
+      // A store's bookings widen nothing: the day every room is offered
+      // over is the day the classrooms are actually in.
+      if (!_isTeachingRoom(draft.key.$2)) continue;
+      for (final r in draft.value.occupied) {
         if (start == 0 || r.start < start) start = r.start;
         if (r.end > end) end = r.end;
       }
@@ -2026,16 +2091,17 @@ class TimetableService {
 
     return [
       for (final e in drafts.entries)
-        RoomOccupancy(
-          room: e.key.$2,
-          building: buildingOf(e.key.$2),
-          isLab: e.value.isLab,
-          day: e.key.$1,
-          schools: [schoolId],
-          occupied: mergeRanges(e.value.occupied),
-          dayStart: start,
-          dayEnd: end,
-        ),
+        if (_isTeachingRoom(e.key.$2))
+          RoomOccupancy(
+            room: e.key.$2,
+            building: buildingOf(e.key.$2),
+            isLab: e.value.isLab,
+            day: e.key.$1,
+            schools: [schoolId],
+            occupied: mergeRanges(e.value.occupied),
+            dayStart: start,
+            dayEnd: end,
+          ),
     ];
   }
 
@@ -2136,6 +2202,13 @@ class TimetableService {
           }
         }
         if (room.isEmpty) continue;
+
+        // The row label is only a guess for a class written into a row
+        // that is not its own: `Pak Studies (SE-B) 11:30-01:15 D-402`
+        // sits in D-402, and booking it into C-602 is what left a full
+        // room showing as spare at 11:30.
+        final moved = _roomTailOf(body);
+        if (moved.isNotEmpty) room = moved;
 
         // A fill reaching the next label column has run into the other
         // grid rather than into a longer class.
