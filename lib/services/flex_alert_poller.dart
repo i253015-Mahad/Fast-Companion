@@ -78,6 +78,11 @@ class _Source {
   const _Source(this.name, this.linkMarker, this.ttl);
 }
 
+/// Everything the poller knows how to read, and what each page costs.
+///
+/// A poller may watch a subset (see `onlySources`): the portal's session
+/// serves five requests and then refuses forever, so a background check has
+/// to be able to spend two of them rather than all four.
 const List<_Source> _sources = [
   // The marks page is the one that moves most often, so it is worth a
   // tighter window than the transcript, which only changes at term end.
@@ -123,15 +128,26 @@ class FlexAlertPoller {
     Future<FlexSnapshot> Function(String uid)? load,
     Future<void> Function(String uid, FlexSnapshot snapshot)? save,
     FlexAlertSink? sink,
+    Set<String>? onlySources,
   })  : _fetch = fetch ?? _defaultFetch,
         _load = load ?? FlexSnapshotStore.load,
         _save = save ?? FlexSnapshotStore.save,
-        _sink = sink ?? const _PluginFlexAlertSink();
+        _sink = sink ?? const _PluginFlexAlertSink(),
+        _activeSources = onlySources == null
+            ? _sources
+            : _sources
+                .where((s) => onlySources.contains(s.name))
+                .toList(growable: false);
 
   final FlexFetchPage _fetch;
   final Future<FlexSnapshot> Function(String uid) _load;
   final Future<void> Function(String uid, FlexSnapshot snapshot) _save;
   final FlexAlertSink _sink;
+
+  /// What this poller watches: the whole catalogue, or just what it was
+  /// asked about. Restricting it is what keeps a background poll at two
+  /// portal requests instead of four — see [_sources].
+  final List<_Source> _activeSources;
 
   static Future<({bool loginRedirect, String? body})> _defaultFetch(
     String path,
@@ -171,7 +187,7 @@ class FlexAlertPoller {
 
     // Which sources are worth a request at all this time.
     final stale = <_Source>[];
-    for (final source in _sources) {
+    for (final source in _activeSources) {
       if (!await _isFresh(uid, source)) stale.add(source);
     }
 
@@ -314,7 +330,7 @@ class FlexAlertPoller {
     if (home.body == null) return const {};
 
     final out = <String, String>{};
-    for (final source in _sources) {
+    for (final source in _activeSources) {
       final link = RegExp(
         'href="([^"]*${source.linkMarker}[^"]*)"',
         caseSensitive: false,

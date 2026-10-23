@@ -16,6 +16,7 @@ import 'services/local_storage_service.dart';
 import 'services/multi_account_auth_service.dart'; // NEW (Fix 3b)
 import 'services/reminder_notification_service.dart';
 import 'services/flex_alert_notifier.dart';
+import 'services/flex_background_poller.dart';
 import 'app_signals.dart';
 
 // Required so the widget-configuration entry point (used by
@@ -127,6 +128,12 @@ void main() async {
   );
 
   await HomeWidget.registerInteractivityCallback(widgetBackgroundCallback);
+
+  // The one deferred Flex marks check. Registered before runApp because
+  // WorkManager keeps no Dart state of its own: the callback is looked up by
+  // name whenever the delay elapses, which may be hours later with this
+  // isolate long gone.
+  await FlexBackgroundPoller.initialize();
 
   // One plugin means one tap callback, registered by
   // ReminderNotificationService — so every notification tap arrives here

@@ -45,6 +45,10 @@ dependencies:
   # Where the account photos are kept once fetched, so the avatar still
   # has a picture when the phone is offline.
   path_provider: ^2.1.5
+  # Runs the Flex marks check some hours after a sign-in, without the app
+  # open. One deferred check per sign-in — see flex_background_poller.dart
+  # for why the portal's five-request session rules out a periodic task.
+  workmanager: ^0.10.0
 
 dev_dependencies:
   flutter_test:

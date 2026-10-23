@@ -86,12 +86,25 @@ void main() {
     });
 
     test('most urgent comes first', () {
+      // Anchored to the clock this assertion passes against, NOT to the
+      // shared [due] fixture: everything else in this file is deliberately
+      // overdue, but this one needs one task still ahead of the clock. Once
+      // `due + 3 days` passed (it did, on 23 Oct 2026), both tasks clamped
+      // to Duration.zero, tied, and fell back to position order — making
+      // the assertion depend on the calendar rather than on ordering.
+      final now = DateTime.now();
       final list = [
-        TodoItem(text: 'later', dueDateTime: due.add(const Duration(days: 3))),
-        TodoItem(text: 'sooner', dueDateTime: due),
+        TodoItem(
+          text: 'later',
+          dueDateTime: now.add(const Duration(days: 3)),
+        ),
+        TodoItem(
+          text: 'sooner',
+          dueDateTime: now.add(const Duration(hours: 1)),
+        ),
       ];
 
-      expect(_textsOf(_onePass(list, DateTime.now())), ['sooner', 'later']);
+      expect(_textsOf(_onePass(list, now)), ['sooner', 'later']);
     });
 
     test('tasks with no date sort last', () {

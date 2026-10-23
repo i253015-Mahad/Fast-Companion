@@ -25,6 +25,8 @@ import 'package:fast_companion/services/home_widget_service.dart';
 import 'package:fast_companion/services/reminder_notification_service.dart';
 import 'package:fast_companion/services/flex_alert_notifier.dart';
 import 'package:fast_companion/services/flex_alert_poller.dart';
+import 'package:fast_companion/services/flex_background_poller.dart';
+import 'package:fast_companion/services/flex_session_service.dart';
 import '../app_signals.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -505,6 +507,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _initState();
     homeRefreshSignal.addListener(_handleExternalRefreshSignal);
     FlexAlertNotifier.pendingTap.addListener(_handleFlexAlertTap);
+    // A sign-in is the only moment worth arming the deferred marks check —
+    // see FlexBackgroundPoller for why it is exactly one per sign-in.
+    FlexSessionService.instance.addSessionListener(_onFlexSessionChanged);
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -512,8 +517,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     homeRefreshSignal.removeListener(_handleExternalRefreshSignal);
     FlexAlertNotifier.pendingTap.removeListener(_handleFlexAlertTap);
+    FlexSessionService.instance.removeSessionListener(_onFlexSessionChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// A session was just adopted out of the WebView — i.e. the student has
+  /// signed in (or re-signed in; the portal never rotates a cookie, so a
+  /// real change means a new session).
+  ///
+  /// Scheduling here rather than on a timer is what keeps the portal's
+  /// five-request budget intact: the check is armed by a sign-in, and only
+  /// by a sign-in.
+  void _onFlexSessionChanged() {
+    final uid = _activeNotesUid;
+    if (uid == null) return;
+    FlexBackgroundPoller.schedule(uid);
   }
 
   @override
@@ -590,6 +609,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _flexPolling = true;
     try {
       await FlexAlertPoller().poll(uid);
+      // The student has just been told what changed, at a cost of up to
+      // four of the portal's five requests. The deferred check exists only
+      // for the case where they did NOT look — firing it after this would
+      // spend two more on an answer they already have.
+      await FlexBackgroundPoller.cancel();
     } catch (e) {
       // A poll is a background nicety. If it throws it must not take the
       // screen with it — the student still has the portal in the WebView.
