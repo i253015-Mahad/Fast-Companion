@@ -531,7 +531,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// by a sign-in.
   void _onFlexSessionChanged() {
     final uid = _activeNotesUid;
-    if (uid == null) return;
+    // Loud on purpose. This runs exactly once per sign-in, in a window the
+    // existing code already documents as racy — and a silent skip here means
+    // no background check until the NEXT sign-in, which looks identical from
+    // the outside to the schedule never having been wired up at all.
+    if (uid == null) {
+      debugPrint(
+        'Flex background: session changed but no active uid — '
+        'check not armed',
+      );
+      return;
+    }
+    debugPrint('Flex background: session changed, arming check for $uid');
     FlexBackgroundPoller.schedule(uid);
   }
 

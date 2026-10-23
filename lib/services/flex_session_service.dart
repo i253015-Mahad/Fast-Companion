@@ -83,6 +83,10 @@ class FlexSessionService {
       _listeners.remove(listener);
 
   void _notifySessionChanged() {
+    // Says when a sign-in actually happened, and how many listeners heard
+    // it. Zero means HomeScreen was not mounted to hear it, which is the
+    // other way this can pass in silence.
+    debugPrint('Flex session: changed (${_listeners.length} listeners)');
     for (final listener in List<VoidCallback>.of(_listeners)) {
       listener();
     }

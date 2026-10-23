@@ -103,6 +103,9 @@ class FlexBackgroundPoller {
         inputData: {_uidKey: uid},
         existingWorkPolicy: ExistingWorkPolicy.replace,
       );
+      debugPrint(
+        'Flex background: check armed for ${DateTime.now().add(delay)}',
+      );
     } catch (e) {
       debugPrint('Flex background check schedule failed: $e');
     }
@@ -116,6 +119,10 @@ class FlexBackgroundPoller {
   static Future<void> cancel() async {
     try {
       await Workmanager().cancelByUniqueName(taskName);
+      debugPrint(
+        'Flex background: pending check cancelled — the student is '
+        'looking at the portal themselves',
+      );
     } catch (e) {
       debugPrint('Flex background check cancel failed: $e');
     }
@@ -129,17 +136,31 @@ class FlexBackgroundPoller {
   /// leaving the real account uncompared.
   static Future<void> run(Map<String, dynamic> input) async {
     final uid = uidOf(input);
-    if (uid == null) return;
+    // Every exit is logged. A check that fires hours later, in an isolate
+    // the student never sees, and then quietly returns is indistinguishable
+    // from one that never ran at all — which is exactly the state this
+    // feature was unfindable in once already.
+    if (uid == null) {
+      debugPrint('Flex background: task ran carrying no uid — nothing to do');
+      return;
+    }
+    debugPrint('Flex background: task running for $uid');
 
     // The cookie is only in SharedPreferences, and this isolate shares none
     // of the main one's state. Without this fetchPage would see no session,
     // return nothing, and the whole check would no-op in silence.
     final service = FlexSessionService.instance;
     await service.restore();
-    if (!service.hasSession) return;
+    if (!service.hasSession) {
+      debugPrint(
+        'Flex background: task ran but the session is gone — nothing to do',
+      );
+      return;
+    }
 
     try {
       await FlexAlertPoller(onlySources: sources).poll(uid);
+      debugPrint('Flex background: marks check finished for $uid');
     } catch (e) {
       debugPrint('Flex background check failed: $e');
     }
