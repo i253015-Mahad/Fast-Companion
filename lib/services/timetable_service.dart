@@ -224,7 +224,11 @@ class TimetableService {
   ///
   /// A section matches either exactly or by its [TimetableEntry.sectionGroup],
   /// so the filter's `AI-A` pill also picks up the `AI-A1` / `AI-A2`
-  /// lab groups.
+  /// lab groups. An entry filed for every section
+  /// ([TimetableEntry.isForEverySection]) matches every pill, so a lab
+  /// exam posted for the whole school cannot vanish behind a section
+  /// choice — which is exactly what happened to the October 23 exam
+  /// labs, written `AI (SE Lab Exam)` and so carrying no section at all.
   static List<TimetableEntry> filterBy(
     List<TimetableEntry> entries, {
     String department = '',
@@ -235,6 +239,7 @@ class TimetableService {
       if (department.isNotEmpty && e.program != department) return false;
       if (batch.isNotEmpty && e.batch != batch) return false;
       if (section.isNotEmpty &&
+          !e.isForEverySection &&
           e.section != section &&
           e.sectionGroup != section) {
         return false;

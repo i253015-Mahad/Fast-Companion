@@ -15,8 +15,9 @@ class TimetableEntry {
   /// Course name as written on the sheet, e.g. "Programming Fundamentals".
   final String course;
 
-  /// Section code, e.g. "CS-A", "EE-B". "" when the cell has none
-  /// (reserved slots, generic announcements).
+  /// Section code, e.g. "CS-A", "EE-B". "" when the cell has none —
+  /// reserved slots, generic announcements, and classes filed for the
+  /// whole school (see [isForEverySection]).
   final String section;
 
   /// Program abbreviation inside [section] ("CS", "SE", "EE"...), "" if
@@ -75,6 +76,17 @@ class TimetableEntry {
     final m = RegExp(r'^(.+)-([A-Z])\d$').firstMatch(section);
     return m == null ? section : '${m.group(1)!}-${m.group(2)!}';
   }
+
+  /// True when the sheet filed this entry for every section rather than
+  /// one.
+  ///
+  /// A cell that names no section — an exam lab written
+  /// `AI (SE Lab Exam) October 23`, a combined session, a notice posted
+  /// for the whole school — is not aimed at nobody; it is aimed at
+  /// everybody, so choosing a section must not hide it. Placeholder
+  /// cells also carry no section, but those are dropped as non-classes
+  /// before a student ever sees them.
+  bool get isForEverySection => section.isEmpty;
 
   /// A copy of this entry filed under [section] instead.
   TimetableEntry withSection(String section) => TimetableEntry(
