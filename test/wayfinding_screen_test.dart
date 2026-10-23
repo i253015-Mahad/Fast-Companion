@@ -1,8 +1,6 @@
 // test/wayfinding_screen_test.dart
 
-import 'package:fast_companion/Screens/rooms_screen.dart';
 import 'package:fast_companion/Screens/wayfinding_screen.dart';
-import 'package:fast_companion/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -88,58 +86,6 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.text('BLOCK').hitTestable(), findsOneWidget);
-
-      await done(tester);
-    });
-  });
-
-  group('a block handed over from a teacher', () {
-    Widget build(String? block) => MaterialApp(
-      home: Scaffold(body: RoomsScreen(active: false, requestedBlock: block)),
-    );
-
-    testWidgets('selects that block on the rooms half', (tester) async {
-      await tester.pumpWidget(build(null));
-      await tester.pump();
-
-      // Unselected pills write their label in a dim white.
-      expect(
-        tester.widget<Text>(find.text('D')).style?.color,
-        Colors.white70,
-      );
-
-      await tester.pumpWidget(build('D'));
-      await tester.pump();
-
-      // Selected pills take the accent fill and write in dark text — the
-      // same treatment the screen's own taps give them.
-      expect(
-        tester.widget<Text>(find.text('D')).style?.color,
-        AppColors.textDark,
-      );
-
-      await done(tester);
-    });
-
-    testWidgets('leaves a block the student chose themselves alone', (
-      tester,
-    ) async {
-      await tester.pumpWidget(build('D'));
-      await tester.pump();
-
-      // The student taps B by hand.
-      await tester.tap(find.text('B'));
-      await tester.pump();
-
-      // The wrapper still holds D, but it has not changed since the last
-      // build, so it must not drag the list back.
-      await tester.pumpWidget(build('D'));
-      await tester.pump();
-
-      expect(
-        tester.widget<Text>(find.text('B')).style?.color,
-        AppColors.textDark,
-      );
 
       await done(tester);
     });

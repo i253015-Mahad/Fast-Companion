@@ -39,22 +39,6 @@ class _WayfindingScreenState extends State<WayfindingScreen> {
   /// Which half is in front.
   bool _showTeachers = false;
 
-  /// The block last asked for by a teacher's office card, handed down to
-  /// the rooms half. Stays set so returning to Rooms later lands on the
-  /// corridor you were last pointed at.
-  String _block = '';
-
-  /// Flips to the rooms half and selects [block].
-  ///
-  /// Filtering a list that is already loaded is a setState and never a
-  /// fetch, so this is instant.
-  void _showRoomsIn(String block) {
-    setState(() {
-      _block = block;
-      _showTeachers = false;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -77,10 +61,7 @@ class _WayfindingScreenState extends State<WayfindingScreen> {
                     opacity: _showTeachers ? 0 : 1,
                     duration: _fade,
                     curve: Curves.easeOut,
-                    child: RoomsScreen(
-                      active: widget.active && !_showTeachers,
-                      requestedBlock: _block.isEmpty ? null : _block,
-                    ),
+                    child: RoomsScreen(active: widget.active && !_showTeachers),
                   ),
                 ),
                 IgnorePointer(
@@ -91,7 +72,6 @@ class _WayfindingScreenState extends State<WayfindingScreen> {
                     curve: Curves.easeOut,
                     child: TeachersScreen(
                       active: widget.active && _showTeachers,
-                      onShowBlock: _showRoomsIn,
                     ),
                   ),
                 ),

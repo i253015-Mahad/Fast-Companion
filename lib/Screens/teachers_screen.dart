@@ -11,15 +11,9 @@ import '../theme/app_colors.dart';
 /// Who teaches where, and how to reach them.
 ///
 /// The second half of the wayfinding tab: the rooms list answers "where
-/// is a free lab", this answers "where is Dr X", and the two share one
-/// building scheme, which is what makes the handoff at the bottom of a
-/// card worth having.
+/// is a free lab", this answers "where is Dr X".
 class TeachersScreen extends StatefulWidget {
-  const TeachersScreen({
-    super.key,
-    required this.active,
-    this.onShowBlock,
-  });
+  const TeachersScreen({super.key, required this.active});
 
   /// Whether this tab is the one on screen.
   ///
@@ -27,13 +21,6 @@ class TeachersScreen extends StatefulWidget {
   /// are all built at startup, so without this the directory would
   /// download a sheet nobody had asked for.
   final bool active;
-
-  /// Hands a building letter back to the wrapper, which flips the tab
-  /// over to the rooms list and selects that block.
-  ///
-  /// Null until the wrapper supplies one; the card's "see block" action
-  /// hides itself rather than pointing at nothing.
-  final void Function(String block)? onShowBlock;
 
   @override
   State<TeachersScreen> createState() => _TeachersScreenState();
@@ -590,9 +577,6 @@ class _TeachersScreenState extends State<TeachersScreen> {
           _action(Icons.mail_rounded, 'Email', () => _email(m)),
         if (m.email.isNotEmpty)
           _action(Icons.copy_rounded, 'Copy', () => _copy(m)),
-        if (m.block.isNotEmpty && widget.onShowBlock != null)
-          _action(Icons.meeting_room_rounded, 'See block ${m.block}',
-              () => widget.onShowBlock!(m.block)),
       ],
     );
   }
