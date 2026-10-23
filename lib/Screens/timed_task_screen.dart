@@ -1,12 +1,16 @@
 // lib/screens/timed_task_screen.dart
 import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import '../models/note.dart';
 import '../theme/app_colors.dart';
 import '../services/database_service.dart';
 import '../services/local_storage_service.dart';
+import '../services/note_history.dart';
 import '../services/note_preview.dart';
 import '../widgets/checked_items_header.dart'; // NEW
+import '../widgets/note_history_actions.dart';
 
 /// How the label field of a timed-task row is decorated.
 ///
@@ -53,6 +57,16 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
   // NEW: arrow UP = checked items hidden, arrow DOWN = shown.
   bool _checkedExpanded = _checkedExpandedByDefault;
 
+  /// Undo and redo for this note, held only while the note is open.
+  late NoteHistory _history;
+
+  /// True while an undo or redo is putting a list back.
+  ///
+  /// [_apply] builds fresh [TodoItem]s, whose text and checkbox feed the
+  /// rows' callbacks, which would otherwise record the step being undone as
+  /// a new change.
+  bool _restoring = false;
+
   @override
   void initState() {
     super.initState();
@@ -64,6 +78,9 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
       _focusNodes.add(FocusNode());
     }
     _sortTasksByUrgency();
+    // Built after the first sort, so the history opens on the order the
+    // student is looking at.
+    _history = NoteHistory(initial: _state());
     _tickerTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _sortTasksByUrgency());
     });
@@ -74,6 +91,74 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
     // silently wipe out any newer widget-driven changes.
     _loadFreshData();
   }
+
+  /// The title and every task, in the order they are shown, as one string —
+  /// which is what a step of the history is.
+  ///
+  /// The ticker above re-sorts this list once a second and never records, so
+  /// the clock running down is not a change the student made and cannot be
+  /// undone. Only the call sites of [_record] put anything on the stack.
+  String _state() => jsonEncode({
+        'title': _titleController.text,
+        'items': _timedItems
+            .map((i) => {
+                  'text': i.text,
+                  'isDone': i.isDone,
+                  'dueDateTime': i.dueDateTime?.toIso8601String(),
+                  'remainingDurationMs': i.remainingDuration?.inMilliseconds,
+                })
+            .toList(),
+      });
+
+  /// Puts a step back. The tasks come out as brand new objects, so their
+  /// ValueKeys change and the rows rebuild holding the restored text.
+  void _apply(String state) {
+    final map = jsonDecode(state) as Map<String, dynamic>;
+    _titleController.text = map['title'] as String;
+    _timedItems = (map['items'] as List)
+        .map((e) => TodoItem(
+              text: e['text'] as String,
+              isDone: e['isDone'] as bool,
+              dueDateTime: e['dueDateTime'] == null
+                  ? null
+                  : DateTime.parse(e['dueDateTime'] as String),
+              remainingDuration: e['remainingDurationMs'] == null
+                  ? null
+                  : Duration(milliseconds: e['remainingDurationMs'] as int),
+            ))
+        .toList();
+    for (final f in _focusNodes) {
+      f.dispose();
+    }
+    _focusNodes
+      ..clear()
+      ..addAll(List.generate(_timedItems.length, (_) => FocusNode()));
+    _sortTasksByUrgency();
+  }
+
+  /// Called from anywhere the tasks or the title change. A run of keystrokes
+  /// inside one [NoteHistory.burst] is one step, not one per letter;
+  /// [discrete] marks a change that is a step in its own right.
+  void _record({bool discrete = false}) {
+    if (_restoring) return;
+    _history.record(_state(), discrete: discrete);
+  }
+
+  void _restore(String? state) {
+    if (state == null) return;
+    setState(() {
+      _restoring = true;
+      try {
+        _apply(state);
+      } finally {
+        _restoring = false;
+      }
+    });
+  }
+
+  void _undo() => _restore(_history.undo());
+
+  void _redo() => _restore(_history.redo());
 
   Future<void> _loadFreshData() async {
     final notes = await LocalStorageService.loadNotes(widget.uid);
@@ -96,6 +181,9 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
         ..clear()
         ..addAll(List.generate(_timedItems.length, (_) => FocusNode()));
       _sortTasksByUrgency();
+      // The screen now shows different contents, so the steps that led to
+      // the old ones are no longer steps of anything the student can see.
+      _history.rebase(_state());
     });
   }
 
@@ -106,6 +194,7 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
     for (var f in _focusNodes) {
       f.dispose();
     }
+    _history.dispose();
     super.dispose();
   }
 
@@ -206,6 +295,9 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) node.requestFocus();
     });
+    // A row added is a step of its own, and must not fold into whatever was
+    // typed just before it.
+    _record(discrete: true);
   }
 
   /// Label field submitted ("next" on the keyboard or a new row):
@@ -232,6 +324,9 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
       return;
     }
     setState(() => item.dueDateTime = picked);
+    // A date is a step of its own: it changes when the task is due, which is
+    // the whole point of this screen.
+    _record(discrete: true);
   }
 
   /// Tap on a row's countdown / "tap to set date" text: change its due date.
@@ -241,6 +336,7 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
     final picked = await _pickDateTime(context);
     if (picked == null || !mounted) return;
     setState(() => item.dueDateTime = picked);
+    _record(discrete: true);
   }
 
   /// Same as before, except removing the LAST row leaves the list empty —
@@ -255,6 +351,7 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
         _focusNodes.removeAt(index);
       }
     });
+    _record(discrete: true);
   }
 
   Future<DateTime?> _pickDateTime(BuildContext context) async {
@@ -306,6 +403,9 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
             // Re-sorting moves the task above/below the "checked items" line.
             _sortTasksByUrgency();
           });
+          // Ticking is a step of its own, and must never fold into whatever
+          // was typed into the row just before it.
+          _record(discrete: true);
         },
       ),
       title: TextFormField(
@@ -319,7 +419,17 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
         maxLines: null,
         keyboardType: TextInputType.multiline,
         decoration: kTimedTaskLabelDecoration,
-        onChanged: (text) => item.text = text,
+        onChanged: (text) {
+          item.text = text;
+          _record();
+        },
+        // "next" must not move focus on its own: the default reaction is
+        // FocusNode.nextFocus() onto something arbitrary, and only then does
+        // _onLabelSubmitted build and focus the row the student asked for —
+        // two hops, with the keyboard dropping between them. Full
+        // explanation in counter_screen.dart. An empty body is deliberate;
+        // losing focus clears composing anyway.
+        onEditingComplete: () {},
         onFieldSubmitted: (_) => _onLabelSubmitted(item),
       ),
       trailing: Row(
@@ -420,6 +530,11 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
             style: TextStyle(color: Colors.white),
           ),
           actions: [
+            NoteHistoryActions(
+              history: _history,
+              onUndo: _undo,
+              onRedo: _redo,
+            ),
             IconButton(
               icon: const Icon(Icons.check, size: 28),
               onPressed: () async {
@@ -445,6 +560,7 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
                   hintStyle: TextStyle(color: Colors.white38),
                   border: InputBorder.none,
                 ),
+                onChanged: (_) => _record(),
               ),
               const Divider(color: Colors.white24, thickness: 1),
               Expanded(child: _buildTimedList()), // CHANGED

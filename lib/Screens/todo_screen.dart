@@ -1,11 +1,15 @@
 // lib/screens/todo_screen.dart
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import '../models/note.dart';
 import '../theme/app_colors.dart';
 import '../services/database_service.dart';
 import '../services/local_storage_service.dart';
+import '../services/note_history.dart';
 import '../widgets/checked_items_header.dart'; // NEW
+import '../widgets/note_history_actions.dart';
 
 class TodoScreen extends StatefulWidget {
   final Note note;
@@ -31,6 +35,16 @@ class _TodoScreenState extends State<TodoScreen> {
   // NEW: arrow UP = checked items hidden, arrow DOWN = shown.
   bool _checkedExpanded = _checkedExpandedByDefault;
 
+  /// Undo and redo for this note, held only while the note is open.
+  late NoteHistory _history;
+
+  /// True while an undo or redo is putting a list back.
+  ///
+  /// [_apply] builds fresh [TodoItem]s, whose text and checkbox feed the
+  /// rows' callbacks, which would otherwise record the step being undone as
+  /// a new change.
+  bool _restoring = false;
+
   @override
   void initState() {
     super.initState();
@@ -44,6 +58,7 @@ class _TodoScreenState extends State<TodoScreen> {
       _assignRank(item); // NEW
     }
     _regroup(); // NEW
+    _history = NoteHistory(initial: _state());
     // The Note object this screen was built with can be stale — e.g. the
     // widget checked off an item after this note was last loaded into
     // whatever list handed it to us. _save() overwrites the whole
@@ -51,6 +66,73 @@ class _TodoScreenState extends State<TodoScreen> {
     // silently wipe out any newer widget-driven changes.
     _loadFreshData();
   }
+
+  /// The title and every item, in the order they are shown, as one string —
+  /// which is what a step of the history is.
+  ///
+  /// The order is captured rather than derived, because the order is the
+  /// student's: two lists with the same items in different rows are different
+  /// lists to whoever wrote them.
+  String _state() => jsonEncode({
+        'title': _titleController.text,
+        'items': _todoItems
+            .map((i) => {'text': i.text, 'isDone': i.isDone})
+            .toList(),
+      });
+
+  /// Puts a step back.
+  ///
+  /// The items come out as brand new objects, so their ValueKeys change and
+  /// the rows rebuild holding the restored text. The ranks are dealt out in
+  /// the restored order before [_regroup] runs, so the order survives the
+  /// regroup rather than being sorted back into the old one.
+  void _apply(String state) {
+    final map = jsonDecode(state) as Map<String, dynamic>;
+    _titleController.text = map['title'] as String;
+    _todoItems = (map['items'] as List)
+        .map((e) => TodoItem(
+              text: e['text'] as String,
+              isDone: e['isDone'] as bool,
+            ))
+        .toList();
+    if (_todoItems.isEmpty) _todoItems.add(TodoItem(text: ""));
+    _rank.clear(); // NEW: the old ranks belonged to the old objects
+    _nextRank = 0; // NEW
+    for (final item in _todoItems) {
+      _assignRank(item); // NEW
+    }
+    for (final f in _focusNodes) {
+      f.dispose();
+    }
+    _focusNodes
+      ..clear()
+      ..addAll(List.generate(_todoItems.length, (_) => FocusNode()));
+    _regroup(); // NEW
+  }
+
+  /// Called from anywhere the list or the title changes. A run of keystrokes
+  /// inside one [NoteHistory.burst] is one step, not one per letter;
+  /// [discrete] marks a change that is a step in its own right.
+  void _record({bool discrete = false}) {
+    if (_restoring) return;
+    _history.record(_state(), discrete: discrete);
+  }
+
+  void _restore(String? state) {
+    if (state == null) return;
+    setState(() {
+      _restoring = true;
+      try {
+        _apply(state);
+      } finally {
+        _restoring = false;
+      }
+    });
+  }
+
+  void _undo() => _restore(_history.undo());
+
+  void _redo() => _restore(_history.redo());
 
   Future<void> _loadFreshData() async {
     final notes = await LocalStorageService.loadNotes(widget.uid);
@@ -80,6 +162,9 @@ class _TodoScreenState extends State<TodoScreen> {
         ..clear()
         ..addAll(List.generate(_todoItems.length, (_) => FocusNode()));
       _regroup(); // NEW
+      // The screen now shows different contents, so the steps that led to
+      // the old ones are no longer steps of anything the student can see.
+      _history.rebase(_state());
     });
   }
 
@@ -89,6 +174,7 @@ class _TodoScreenState extends State<TodoScreen> {
     for (var f in _focusNodes) {
       f.dispose();
     }
+    _history.dispose();
     super.dispose();
   }
 
@@ -146,7 +232,12 @@ class _TodoScreenState extends State<TodoScreen> {
   /// NEW: a checkbox was ticked or unticked, so move the item between groups.
   /// The item keeps its rank throughout, so _regroup puts it straight back
   /// where it was: unticking no longer drops it at the bottom.
-  void _onItemDoneChanged(TodoItem item) => setState(_regroup);
+  void _onItemDoneChanged(TodoItem item) {
+    setState(_regroup);
+    // Ticking is a step of its own, and must never fold into whatever was
+    // typed into the row just before it.
+    _record(discrete: true);
+  }
 
   Future<void> _save() async {
     final savedList = _todoItems
@@ -183,6 +274,9 @@ class _TodoScreenState extends State<TodoScreen> {
         if (node.canRequestFocus) node.requestFocus();
       });
     });
+    // A row added is a step of its own, and must not fold into whatever was
+    // typed just before it.
+    _record(discrete: true);
   }
 
   void _removeItemRow(int index) {
@@ -192,6 +286,7 @@ class _TodoScreenState extends State<TodoScreen> {
         _todoItems[0] = TodoItem(text: "");
         _assignRank(_todoItems[0]); // NEW
       });
+      _record(discrete: true);
       return;
     }
     final wasDone = _todoItems[index].isDone; // NEW
@@ -210,6 +305,7 @@ class _TodoScreenState extends State<TodoScreen> {
         });
       }
     });
+    _record(discrete: true);
   }
 
   /// NEW: the "⌃ x checked items" header plus (when open) the checked rows.
@@ -233,6 +329,8 @@ class _TodoScreenState extends State<TodoScreen> {
               key: ValueKey(_todoItems[i]),
               item: _todoItems[i],
               focusNode: _focusNodes[i],
+              // A checked item is still editable, so it still reports.
+              onChanged: () => _record(),
               onNextRowRequested: () => _createNewItemRow(i),
               onDeleteRequested: () => _removeItemRow(i),
               onDoneChanged: _onItemDoneChanged,
@@ -264,6 +362,11 @@ class _TodoScreenState extends State<TodoScreen> {
             style: TextStyle(color: Colors.white),
           ),
           actions: [
+            NoteHistoryActions(
+              history: _history,
+              onUndo: _undo,
+              onRedo: _redo,
+            ),
             IconButton(
               icon: const Icon(Icons.check, size: 28),
               onPressed: () async {
@@ -289,6 +392,7 @@ class _TodoScreenState extends State<TodoScreen> {
                   hintStyle: TextStyle(color: Colors.white38),
                   border: InputBorder.none,
                 ),
+                onChanged: (_) => _record(),
               ),
               const Divider(color: Colors.white24, thickness: 1),
               Expanded(
@@ -299,7 +403,11 @@ class _TodoScreenState extends State<TodoScreen> {
                     return TodoRowItem(
                       key: ValueKey(item),
                       item: item,
+                      rowIndex: index, // NEW: the grip has to name this row
                       focusNode: _focusNodes[index],
+                      // A row reports its own text edits here, because its
+                      // field is in the row and the history is in the screen.
+                      onChanged: () => _record(),
                       onNextRowRequested: () => _createNewItemRow(index),
                       onDeleteRequested: () => _removeItemRow(index),
                       onDoneChanged: _onItemDoneChanged, // NEW
@@ -314,6 +422,7 @@ class _TodoScreenState extends State<TodoScreen> {
                       _focusNodes.insert(newIndex, node);
                       _ranksToMatchOrder(); // NEW: the drag is the new order
                     });
+                    _record(discrete: true);
                   },
                   proxyDecorator: (child, index, animation) {
                     return AnimatedBuilder(
@@ -349,6 +458,19 @@ class TodoRowItem extends StatefulWidget {
   final VoidCallback onNextRowRequested;
   final VoidCallback onDeleteRequested;
 
+  /// Which row of the list this is, so the drag grip can tell the
+  /// reorderable list where a drag started.
+  ///
+  /// Null for the rows under the "checked items" line: those are rendered as
+  /// the list's footer rather than as list items, so they are not reorderable
+  /// and a grip on them would be a grip that does nothing.
+  final int? rowIndex;
+
+  /// Called after this row's text changes, so the screen can put the change
+  /// on its undo stack. The field is in the row and the history is in the
+  /// screen, so the row has to be the one to say something happened.
+  final VoidCallback onChanged;
+
   /// NEW: called after the checkbox is ticked or unticked, with the item that
   /// changed, so the screen can move it above/below the "checked items" line.
   final ValueChanged<TodoItem> onDoneChanged;
@@ -359,7 +481,9 @@ class TodoRowItem extends StatefulWidget {
     required this.focusNode,
     required this.onNextRowRequested,
     required this.onDeleteRequested,
+    required this.onChanged,
     required this.onDoneChanged,
+    this.rowIndex,
   });
 
   @override
@@ -412,13 +536,42 @@ class _TodoRowItemState extends State<TodoRowItem> {
             hintStyle: TextStyle(color: Colors.white24),
             border: InputBorder.none,
           ),
-          onChanged: (text) => widget.item.text = text,
+          onChanged: (text) {
+            widget.item.text = text;
+            widget.onChanged();
+          },
+          // Keyboard "next" must not move focus on its own. The default
+          // reaction is FocusNode.nextFocus(), which lands somewhere
+          // arbitrary before onSubmitted creates and focuses the new row —
+          // and the keyboard drops between the two hops. See the full
+          // explanation in counter_screen.dart.
+          onEditingComplete: () {},
           onSubmitted: (_) => widget.onNextRowRequested(),
         ),
       ),
-      trailing: IconButton(
-        icon: const Icon(Icons.close, color: Colors.white38),
-        onPressed: widget.onDeleteRequested,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.white38),
+            onPressed: widget.onDeleteRequested,
+          ),
+          // A visible grip, so that reordering reads as possible at all — the
+          // long press that actually starts a drag is invisible, and this
+          // list looked fixed without it.
+          if (widget.rowIndex != null)
+            ReorderableDragStartListener(
+              index: widget.rowIndex!,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4.0),
+                child: Icon(
+                  Icons.drag_indicator,
+                  color: Colors.white24,
+                  size: 20,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

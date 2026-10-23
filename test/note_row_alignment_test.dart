@@ -170,6 +170,7 @@ Future<void> pumpCounters(WidgetTester tester, List<String> labels) async {
                     item: CounterItem(label: labels[index]),
                     rowNumber: index + 1,
                     focusNode: FocusNode(),
+                    onChanged: () {},
                     onNextRowRequested: () {},
                     onDeleteRequested: () {},
                   ),
