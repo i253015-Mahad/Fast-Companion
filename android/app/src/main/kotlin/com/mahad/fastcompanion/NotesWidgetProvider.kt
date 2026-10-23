@@ -49,9 +49,25 @@ class NotesWidgetProvider : AppWidgetProvider() {
         // otherwise.
         const val ACTION_TICK = "com.mahad.fastcompanion.ACTION_TICK"
 
+        // Sent by MainActivity the moment the phone is unlocked. Since API 26
+        // a manifest receiver cannot hear ACTION_USER_PRESENT itself, so the
+        // activity — the one component reliably alive when the phone is picked
+        // up — relays it here as an explicit broadcast. Without it the widget
+        // only catches up when the app happens to be next opened.
+        const val ACTION_UNLOCK_REFRESH = "com.mahad.fastcompanion.ACTION_UNLOCK_REFRESH"
+
         // A task shows a per-minute countdown when due within this long.
         // Further away it shows static text like "2d 3h left" (hourly refresh).
         private const val LIVE_COUNTDOWN_MAX_MS = 24L * 60 * 60 * 1000
+
+        // Ticks are RTC_WAKEUP, so each one costs a CPU wakeup (an RTC alarm is
+        // only delivered when the device is next awake — that is what froze the
+        // countdowns overnight). Per-minute ticks are right while someone can
+        // be looking at the widget, but a night of them would be ~1400 pointless
+        // wakeups. Once the screen is off, drop to this heartbeat instead;
+        // 15 minutes is also the floor Android enforces on exact-while-idle
+        // alarms in deep Doze, so anything finer would be discarded anyway.
+        private const val OFFLINE_TICK_INTERVAL_MS = 15L * 60 * 1000
 
         // Keeps tick PendingIntents separate from the expiry-refresh one
         // (same action+component+requestCode would be the SAME PendingIntent).
@@ -148,7 +164,59 @@ class NotesWidgetProvider : AppWidgetProvider() {
                 }
             }
 
+            ACTION_UNLOCK_REFRESH -> {
+                try {
+                    refreshCountdowns(context)
+                } catch (e: Exception) {
+                    android.util.Log.e("NotesWidgetProvider", "Unlock refresh failed", e)
+                }
+            }
+
+            // A reboot and an APK replace both clear every alarm we had
+            // scheduled, and nothing re-arms them until the app is next
+            // opened — which is exactly how the countdown froze overnight.
+            // AppWidgetProvider drops these two actions on the floor, so they
+            // have to be handled here.
+            Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                try {
+                    redrawAllWidgets(context)
+                } catch (e: Exception) {
+                    android.util.Log.e("NotesWidgetProvider", "Restart re-arm failed", e)
+                }
+            }
+
             else -> super.onReceive(context, intent)
+        }
+    }
+
+    /** Every widget currently placed on a home screen. */
+    private fun placedWidgetIds(context: Context): IntArray =
+        AppWidgetManager.getInstance(context).getAppWidgetIds(
+            ComponentName(context, NotesWidgetProvider::class.java)
+        )
+
+    /**
+     * Full redraw of every placed widget. For a reboot or an APK replace:
+     * both clear our alarms, and neither may be answered with a list rebind
+     * because the launcher can no longer be holding our views.
+     */
+    private fun redrawAllWidgets(context: Context) {
+        val manager = AppWidgetManager.getInstance(context)
+        for (id in placedWidgetIds(context)) {
+            updateWidget(context, manager, id)
+        }
+    }
+
+    /**
+     * Same widgets, but only a list rebind each. This runs on every unlock, so
+     * it must never replace the RemoteViews — that would flash the widget every
+     * time the phone is picked up. handleTick recomputes each row's countdown
+     * from the current time and re-arms the chain, escalating to a full redraw
+     * by itself when the launcher can no longer be holding our views.
+     */
+    private fun refreshCountdowns(context: Context) {
+        for (id in placedWidgetIds(context)) {
+            handleTick(context, id)
         }
     }
 
@@ -675,9 +743,9 @@ class NotesWidgetProvider : AppWidgetProvider() {
                 val triggerAt = next + 1000
                 val canExact = Build.VERSION.SDK_INT >= 31 && alarmManager.canScheduleExactAlarms()
                 if (canExact) {
-                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC, triggerAt, pending)
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
                 } else {
-                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC, triggerAt, pending)
+                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
                 }
             }
         } catch (e: Exception) {
@@ -732,22 +800,49 @@ class NotesWidgetProvider : AppWidgetProvider() {
             }
             if (next == Long.MAX_VALUE) return
 
-            // Next minute boundary in the live window, else next hour
-            // boundary (static "2d 3h left" text only needs hourly accuracy).
-            val triggerAt = if (next - now <= LIVE_COUNTDOWN_MAX_MS) {
-                (now / 60_000 + 1) * 60_000
-            } else {
-                (now / 3_600_000 + 1) * 3_600_000
-            }
+            val triggerAt = nextTickTriggerAt(context, now, next)
             val canExact = Build.VERSION.SDK_INT >= 31 && alarmManager.canScheduleExactAlarms()
             if (canExact) {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC, triggerAt, pending)
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
             } else {
-                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC, triggerAt, pending)
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
             }
         } catch (e: Exception) {
             android.util.Log.e("NotesWidgetProvider", "Failed to schedule countdown tick", e)
         }
+    }
+
+    /**
+     * When the next tick should fire.
+     *
+     * A countdown written this long out is static text ("2d 3h left"), so an
+     * hourly boundary is plenty. Inside the live window it is per-minute while
+     * the screen is on, as it always was. With the screen off it drops to the
+     * [OFFLINE_TICK_INTERVAL_MS] heartbeat — except for the final stretch,
+     * which stays per-minute so the countdown approaches zero smoothly instead
+     * of jumping. Never scheduled past [due]; the expiry refresh owns that
+     * moment.
+     */
+    private fun nextTickTriggerAt(context: Context, now: Long, due: Long): Long {
+        if (due - now > LIVE_COUNTDOWN_MAX_MS) {
+            return (now / 3_600_000 + 1) * 3_600_000
+        }
+        val minuteBoundary = (now / 60_000 + 1) * 60_000
+        if (screenIsInteractive(context) || due - now <= OFFLINE_TICK_INTERVAL_MS) {
+            return minuteBoundary
+        }
+        return (now / OFFLINE_TICK_INTERVAL_MS + 1) * OFFLINE_TICK_INTERVAL_MS
+    }
+
+    /**
+     * Whether anyone could be looking at the widget right now. Unknown is
+     * treated as "yes": a needless per-minute tick is cheap, a stale
+     * countdown is what we are trying to prevent.
+     */
+    private fun screenIsInteractive(context: Context): Boolean = try {
+        (context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive
+    } catch (e: Exception) {
+        true
     }
 
     private fun cancelNextTick(context: Context, appWidgetId: Int) {

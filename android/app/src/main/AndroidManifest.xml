@@ -77,6 +77,14 @@
 
             <intent-filter>
                  <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                 <!-- Re-arms the countdown alarms. A reboot or an APK replace
+                      clears every alarm we scheduled, and nothing else
+                      re-arms them until the app is next opened — which is how
+                      the countdown used to freeze and stay frozen. Note
+                      AppWidgetProvider ignores these two actions itself, so
+                      NotesWidgetProvider.onReceive handles them. -->
+                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
 
              <meta-data
