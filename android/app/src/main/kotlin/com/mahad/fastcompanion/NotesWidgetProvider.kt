@@ -247,12 +247,20 @@ class NotesWidgetProvider : AppWidgetProvider() {
 
     /**
      * Taps on list rows arrive here.
+     *  - every tap first re-arms all the countdown alarms ([rescheduleAll]),
+     *    which is how a widget whose timers were killed by a force-stop gets
+     *    them back without waiting for Dart;
      *  - the checked-items header is handled right here (instant, no Dart);
      *  - ticking a task or pressing + / - first updates the widget on the spot,
      *    then hands the real work (saving to Firebase) to Dart as before.
      */
     private fun handleItemClick(context: Context, uri: Uri?) {
         if (uri == null) return
+
+        // First, and unconditionally: this tap proves the process is running
+        // again, so put every widget's timers back up before doing any UI work.
+        // See [rescheduleAll] for why a tap is the only reliable signal.
+        rescheduleAll(context)
 
         if (uri.host.equals("toggleChecked", ignoreCase = true)) {
             val widgetId = uri.getQueryParameter("widgetId")?.toIntOrNull() ?: return
@@ -642,6 +650,40 @@ class NotesWidgetProvider : AppWidgetProvider() {
             }
         } catch (e: Exception) {
             android.util.Log.e("NotesWidgetProvider", "Reschedule failed", e)
+        }
+    }
+
+    /**
+     * Re-arms the countdown and expiry alarms of EVERY placed widget.
+     *
+     * This exists because of one specific failure, measured on this device:
+     * the phone's pre-installed "MorningKill" cleaner force-stopped the app at
+     * 03:01 (logcat: `Force stopping com.mahad.fastcompanion ... from pid 3257`,
+     * alongside Instagram and WhatsApp). A force-stop cancels every alarm we
+     * had scheduled *and* puts the package in stopped state, so nothing of ours
+     * runs again — the chain above dies silently and the launcher keeps showing
+     * the RemoteViews it already held, i.e. yesterday's countdown, until the
+     * user touches the widget.
+     *
+     * A row tap is an explicit broadcast, which is the one thing that still
+     * reaches a stopped package, so the first tap after a force-stop is the
+     * moment we know we are alive again. Re-arming HERE makes that the moment
+     * the widget becomes self-driving again. It used to depend on Dart's save
+     * happening to find a difference (see _requestContentUpdate in
+     * home_widget_service.dart) — a tap that changed nothing left the timers
+     * dead for the rest of the day.
+     *
+     * Cheap and idempotent: [reschedule] cancels before it arms, and a widget
+     * with no payload or a type without timers does nothing at all.
+     */
+    private fun rescheduleAll(context: Context) {
+        try {
+            val prefs = HomeWidgetPlugin.getData(context)
+            for (id in placedWidgetIds(context)) {
+                reschedule(context, id, prefs.getString("payload_$id", null))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("NotesWidgetProvider", "Reschedule-all failed", e)
         }
     }
 
