@@ -106,6 +106,14 @@ Future<void> _handleTap(Uri? uri) async {
       accounts,
       authTimeout: const Duration(seconds: 8),
     );
+
+    // A widget tap is the other moment we're provably alive after an overnight
+    // force-stop — an explicit broadcast is the one thing that still reaches a
+    // stopped package — so ship any queued gap report. After restoreSessions
+    // rather than before it: a report that needs the signed-in fallback path
+    // would otherwise fail here every time and wait for the next app launch.
+    // Not awaited: telemetry must never slow a tap down.
+    HomeWidgetService.flushGapQueue();
     final gotSession = MultiAccountAuthService.instance.sessionFor(uid) != null;
     debugPrint('🔎 widget background: session for $uid restored? $gotSession');
 

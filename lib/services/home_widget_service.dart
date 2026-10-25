@@ -1,8 +1,12 @@
 // lib/services/home_widget_service.dart
 import 'dart:convert';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 import '../models/note.dart';
+import 'local_storage_service.dart';
+import 'multi_account_auth_service.dart';
 
 /// Bridges notes to the Android home screen widgets. Each placed widget
 /// (identified by its appWidgetId) has its own pinned note.
@@ -48,6 +52,12 @@ class HomeWidgetService {
   /// launcher is actually holding. Safe to call every launch: the provider
   /// only redraws when there is really something to repair.
   static Future<void> ensureWidgetsDrawn() async {
+    // Before anything that can bail out: a report can be waiting even when no
+    // widget is pinned any more (the outage happened while one was), and
+    // this launch is the first moment we can ship it. Fire-and-forget, so a
+    // slow or offline Firebase never delays the widget repair below.
+    flushGapQueue();
+
     final ids = await widgetIds();
     if (ids.isEmpty) return;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -55,6 +65,148 @@ class HomeWidgetService {
       await HomeWidget.saveWidgetData<int>('$_kVerifyPrefix$id', now);
     }
     await HomeWidget.updateWidget(androidName: _androidWidgetName);
+
+    // The provider answers that broadcast, and answering it is exactly where
+    // detectGap gets its chance to see a stale marker — so flush again once
+    // it has had a moment. Without this a gap found on this launch would wait
+    // for the NEXT one, and an app someone opens once a week would ship
+    // almost nothing. Still fire-and-forget: this runs unawaited.
+    await Future<void>.delayed(const Duration(seconds: 2));
+    flushGapQueue();
+  }
+
+  // ---------- overnight gap reports ----------
+
+  /// Key the Kotlin provider queues refresh-chain gap reports under. Must
+  /// match GAP_QUEUE_KEY in NotesWidgetProvider.kt.
+  static const _kGapQueueKey = 'gap_queue';
+
+  /// Ships whatever the provider recorded while we weren't running.
+  ///
+  /// A force-stop — this phone ships a stock cleaner, `com.pri.morning.kill`,
+  /// that force-stops around 03:00, and every OEM ships an equivalent —
+  /// cancels every alarm *and* puts the package in stopped state, so the
+  /// countdown chain dies in complete silence: nothing can reach us, and the
+  /// launcher keeps painting the RemoteViews it already holds. `detectGap` in
+  /// the provider notices the next time anything wakes it and queues the
+  /// outage; this is the only place it leaves the device, which is what turns
+  /// "one phone looked wrong this morning" into a number across the fleet.
+  ///
+  /// Called from two moments when we are provably alive *after* an outage —
+  /// app launch ([ensureWidgetsDrawn]) and a widget tap
+  /// (widget_background_main.dart). Telemetry must never break the app, so
+  /// every failure is swallowed and the queue kept for the next attempt;
+  /// Kotlin caps it, so an app that is never reopened again cannot grow a
+  /// file forever.
+  ///
+  /// Both calls fire within a couple of seconds of each other on every launch,
+  /// and the first can take several because it may have to restore sessions.
+  /// They are therefore chained rather than run in parallel: in parallel the
+  /// second reads the queue before the first has cleared it and the same
+  /// reports go up twice, and merely skipping the second would lose the very
+  /// reports it exists to catch (queued while the first was still reading).
+  static Future<void> flushGapQueue() {
+    final run = _flushChain.then((_) => _flushOnce());
+    _flushChain = run.catchError((_) {});
+    return run;
+  }
+
+  static Future<void> _flushChain = Future<void>.value();
+
+  static Future<void> _flushOnce() async {
+    try {
+      final raw = await HomeWidget.getWidgetData<String>(_kGapQueueKey);
+      if (raw == null || raw.trim().isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! List || decoded.isEmpty) return;
+      final events = decoded.whereType<Map>().toList();
+      if (events.isEmpty) return;
+
+      debugPrint('gap flush: ${events.length} report(s) queued, sending');
+      final err = await _pushGapReport(events);
+      if (err != null) {
+        debugPrint('gap flush: kept for the next launch');
+        return; // keep it, try next time
+      }
+      await HomeWidget.saveWidgetData<String>(_kGapQueueKey, '[]');
+      debugPrint('gap flush: ${events.length} report(s) delivered');
+    } catch (e) {
+      // Diagnostics are never worth surfacing to the user.
+      debugPrint('gap flush: threw $e');
+    }
+  }
+
+  /// Returns null on success, or the reason it didn't take.
+  static Future<String?> _pushGapReport(List<Map> events) async {
+    final payload = <String, dynamic>{
+      'events': events,
+      'uploadedAt': ServerValue.timestamp,
+      // Deliberately no uid, no note ids and no note content: this is about
+      // the device and the OS, not about a person.
+    };
+
+    // One shared node is what makes a fleet count queryable in one place, so
+    // try it first. Rules for it live in the console rather than in this
+    // repo, and a denied write must not mean "no telemetry ever" — hence the
+    // fallback into the signed-in user's own subtree, which the note writes
+    // already prove is writable.
+    final db = FirebaseDatabase.instanceFor(
+      app: Firebase.app(),
+      databaseURL: kRtdbUrl,
+    );
+
+    final sharedErr = await _trySet(db.ref('diagnostics/widget_gaps'), payload);
+    if (sharedErr == null) return null;
+    debugPrint('gap flush: shared node refused — $sharedErr');
+
+    // Fall back into the signed-in user's own subtree, which the note writes
+    // already prove is writable. Read the session from MultiAccountAuthService,
+    // NOT FirebaseAuth.instance: this app keeps per-account sessions, so the
+    // default app's auth is routinely signed out while a real one is live —
+    // which is why a uid taken from there comes back null every time.
+    await _ensureSessions();
+    final sessions = MultiAccountAuthService.instance.sessions.values.toList();
+    if (sessions.isEmpty) return 'no live session to write under';
+
+    for (final session in sessions) {
+      final err = await _trySet(
+        session.database.ref('users/${session.uid}/diagnostics/widget_gaps'),
+        payload,
+      );
+      if (err == null) return null;
+      debugPrint('gap flush: users/${session.uid} refused — $err');
+    }
+    return 'no live session took it';
+  }
+
+  /// The flush can run before anything has restored the per-account sessions —
+  /// ensureWidgetsDrawn is called a few lines BEFORE restoreSessions in
+  /// home_screen — so do it here instead of trusting call-site ordering. A
+  /// no-op when there is nothing to restore.
+  static Future<void> _ensureSessions() async {
+    if (MultiAccountAuthService.instance.sessions.isNotEmpty) return;
+    try {
+      final accounts = await LocalStorageService.loadAccounts();
+      if (accounts.isEmpty) return;
+      await MultiAccountAuthService.instance.restoreSessions(
+        accounts,
+        authTimeout: const Duration(seconds: 8),
+      );
+    } catch (_) {
+      // Leave it empty; we retry on the next launch rather than raise.
+    }
+  }
+
+  /// Firebase's write future only settles when the server acks, which offline
+  /// never happens — so this has to be bounded, or a single launch with no
+  /// signal would hang the flush forever.
+  static Future<String?> _trySet(DatabaseReference ref, Object? value) async {
+    try {
+      await ref.push().set(value).timeout(const Duration(seconds: 8));
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
   }
 
   // ---------- id bookkeeping ----------

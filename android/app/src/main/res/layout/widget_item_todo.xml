@@ -40,5 +40,22 @@
             android:textSize="13sp"
             android:maxLines="1"
             android:visibility="gone" />
+
+        <!-- The live countdown, ticked by the LAUNCHER rather than by us. This
+             is what keeps the number honest when our process has been
+             force-stopped: a Chronometer is just a TextView whose value is
+             derived from SystemClock at draw time, so nothing of ours needs to
+             run for it to keep moving. Shown only for deadlines far enough out
+             to be worth counting (see liveRemainingMs); everything else keeps
+             item_meta, which is recomputed at every rebind. -->
+        <Chronometer
+            android:id="@+id/item_countdown"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textColor="@color/widget_accent"
+            android:textSize="13sp"
+            android:maxLines="1"
+            android:visibility="gone" />
     </LinearLayout>
 </LinearLayout>

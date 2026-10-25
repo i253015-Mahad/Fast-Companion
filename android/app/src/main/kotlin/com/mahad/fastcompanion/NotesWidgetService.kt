@@ -4,6 +4,8 @@ import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.SystemClock
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.StrikethroughSpan
@@ -60,6 +62,28 @@ private class NotesWidgetFactory(
 
     // Called whenever the provider calls notifyAppWidgetViewDataChanged().
     override fun onDataSetChanged() {
+        // The launcher pulling this list is a signal that can arrive WITHOUT
+        // NotesWidgetProvider having been entered first — after the launcher's
+        // own process restarts, for instance. Treat it as one more chance to
+        // revive a countdown chain something (a force-stop) killed: the
+        // provider answers with alarms only, never with a rebind, so feeding
+        // this back can't loop.
+        try {
+            context.sendBroadcast(
+                Intent(context, NotesWidgetProvider::class.java)
+                    .setAction(NotesWidgetProvider.ACTION_REARM)
+                    // Without this the hook is inert exactly when it matters:
+                    // a force-stopped package is in the stopped state, and a
+                    // plain broadcast is silently dropped for it. This flag is
+                    // what lets "the launcher is asking us for rows again"
+                    // revive a chain while we are still marked stopped, instead
+                    // of only once something else has already woken us.
+                    .addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("NotesWidgetService", "Re-arm broadcast failed", e)
+        }
+
         uid = ""
         noteId = ""
         type = "text"
@@ -163,17 +187,41 @@ private class NotesWidgetFactory(
             if (isDone) R.drawable.ic_checkbox_checked else R.drawable.ic_checkbox_unchecked
         )
 
-        // Countdown as plain text. No Chronometer: the launcher only starts a
-        // RemoteViews chronometer when isShown() happens to be true at bind
-        // time (API 26+), so it froze at random after list rebinds. The text
-        // is instead recomputed at every refresh (see ACTION_TICK in the
-        // provider), which can never freeze.
-        val meta = formatMeta(item)
-        if (meta.isNotEmpty()) {
-            views.setTextViewText(R.id.item_meta, meta)
-            views.setViewVisibility(R.id.item_meta, View.VISIBLE)
-        } else {
+        // The countdown. Prefer a Chronometer: it is a TextView whose value the
+        // LAUNCHER derives from SystemClock every second, so it keeps counting
+        // even while our process has been force-stopped — which is exactly what
+        // this phone's nightly cleaner does (see rescheduleAll in the provider).
+        // Plain text remains the fallback for everything a Chronometer shouldn't
+        // carry: past deadlines, the last minute, done items, static durations,
+        // and API < 24 where countdown mode doesn't exist.
+        val live = liveRemainingMs(item)
+        if (live != null && Build.VERSION.SDK_INT >= 24) {
+            // ORDER MATTERS. Chronometer only ticks while
+            // mVisible && mStarted && isShown() (Chronometer.updateRunning()),
+            // and it re-checks that only when updateRunning() happens to run —
+            // i.e. on setStarted, on a visibility change, or on attach/detach.
+            // A ListView binds rows before attaching them, so setStarted can
+            // land while the row is still hidden. Making the view visible AFTER
+            // setStarted fires onVisibilityChanged, giving updateRunning() a
+            // second chance at a moment when the row is more likely shown.
+            views.setChronometerCountDown(R.id.item_countdown, true)
+            views.setChronometer(
+                R.id.item_countdown,
+                SystemClock.elapsedRealtime() + live,
+                "%s left",
+                true
+            )
+            views.setViewVisibility(R.id.item_countdown, View.VISIBLE)
             views.setViewVisibility(R.id.item_meta, View.GONE)
+        } else {
+            views.setViewVisibility(R.id.item_countdown, View.GONE)
+            val meta = formatMeta(item)
+            if (meta.isNotEmpty()) {
+                views.setTextViewText(R.id.item_meta, meta)
+                views.setViewVisibility(R.id.item_meta, View.VISIBLE)
+            } else {
+                views.setViewVisibility(R.id.item_meta, View.GONE)
+            }
         }
 
         views.setOnClickFillInIntent(R.id.todo_item_root, fillIn("toggleTodo", index, null))
@@ -196,6 +244,25 @@ private class NotesWidgetFactory(
                 "notesWidget://$host?uid=${Uri.encode(uid)}&noteId=${Uri.encode(noteId)}&index=$index$deltaPart"
             )
         )
+    }
+
+    /**
+     * Milliseconds until this task's deadline, or null when there is nothing a
+     * Chronometer should be counting.
+     *
+     * Only strictly-future deadlines at least a minute out qualify. Below that,
+     * [formatMeta] is about to show "less than a minute left" and the expiry
+     * alarm is about to rebind the row to "Time expired" — letting a Chronometer
+     * run into zero instead would trade a deliberate flip for a bare "0:00
+     * left". Past deadlines aren't countdowns either: those are the text's job.
+     *
+     * This is the same 60_000 threshold formatMeta uses, so exactly one of the
+     * two ever renders any given row.
+     */
+    private fun liveRemainingMs(item: JSONObject): Long? {
+        if (item.isNull("dueMs")) return null
+        val diff = item.getLong("dueMs") - System.currentTimeMillis()
+        return if (diff >= 60_000) diff else null
     }
 
     private fun formatMeta(item: JSONObject): String {

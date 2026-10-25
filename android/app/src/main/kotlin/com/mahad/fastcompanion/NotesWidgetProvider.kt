@@ -12,6 +12,7 @@ import android.os.Build
 import android.view.View
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetPlugin
+import org.json.JSONArray
 import org.json.JSONObject
 
 // How many widget taps have been handed to Dart but not finished yet.
@@ -41,12 +42,14 @@ class NotesWidgetProvider : AppWidgetProvider() {
         // Every tap on a list row comes here first (see attachList).
         const val ACTION_ITEM_CLICK = "com.mahad.fastcompanion.ACTION_ITEM_CLICK"
 
-        // The widget's own refresh tick. Countdowns are plain text recomputed
-        // at every rebind (a launcher-ticked Chronometer freezes at random
-        // after rebinds, API 26+), so while a countdown is on screen we drive
-        // our own refreshes: every minute boundary while a task is due within
-        // 24h, every hour boundary while tasks are due further out, none
-        // otherwise.
+        // The widget's own refresh tick. The live countdown itself is carried
+        // by a launcher-ticked Chronometer (see todoRow in NotesWidgetService),
+        // which keeps counting while our process is force-stopped; what still
+        // needs US is everything a Chronometer cannot do — flipping a task to
+        // "Time expired", counting up "Overdue by", and putting a freshly
+        // computed base back into the Chronometer. Every minute boundary while
+        // a task is due within 24h, every hour boundary while tasks are due
+        // further out, none otherwise.
         const val ACTION_TICK = "com.mahad.fastcompanion.ACTION_TICK"
 
         // Sent by MainActivity the moment the phone is unlocked. Since API 26
@@ -55,6 +58,14 @@ class NotesWidgetProvider : AppWidgetProvider() {
         // up — relays it here as an explicit broadcast. Without it the widget
         // only catches up when the app happens to be next opened.
         const val ACTION_UNLOCK_REFRESH = "com.mahad.fastcompanion.ACTION_UNLOCK_REFRESH"
+
+        // Sent by NotesWidgetService the moment the launcher pulls the list.
+        // It is the one entry point that can fire WITHOUT this provider having
+        // been entered first — the launcher rebinding after its own process
+        // restart, or re-inflating a widget — so it is another chance to revive
+        // a countdown chain a force-stop killed. Re-arming is idempotent and
+        // alarm-only, so it can never itself trigger a rebind.
+        const val ACTION_REARM = "com.mahad.fastcompanion.ACTION_REARM"
 
         // A task shows a per-minute countdown when due within this long.
         // Further away it shows static text like "2d 3h left" (hourly refresh).
@@ -110,6 +121,35 @@ class NotesWidgetProvider : AppWidgetProvider() {
         // the build we last drew under is the one thing that lets us tell a
         // skip that is safe from one that strands the widget.
         private fun drawnBuildKey(appWidgetId: Int) = "drawn_build_$appWidgetId"
+
+        // ---- overnight gap detector ---------------------------------------
+        //
+        // The failure this whole change exists for is silent: something (this
+        // phone ships com.pri.morning.kill, and every OEM ships some
+        // equivalent) force-stops us around 03:00, which cancels every alarm
+        // AND puts the package in the stopped state, so no broadcast can reach
+        // us again until the user happens to touch the widget. The countdown
+        // then sits there showing yesterday's numbers and nobody finds out.
+        //
+        // So every time we arm a tick we also record WHEN it was armed to fire
+        // for, and on the next time anything at all wakes this receiver we
+        // check whether that moment has passed. If it has — and not by a
+        // rounding error, hence the grace — the chain is broken, and we say so
+        // instead of quietly carrying on.
+        private fun expectedByKey(appWidgetId: Int) = "expected_by_$appWidgetId"
+
+        // How late a scheduled tick may be before we call it a gap. Exact
+        // RTC alarms land within seconds; this only has to be wider than the
+        // worst legitimate delivery delay (Doze maintenance, clock stepping)
+        // so a working chain never reports one.
+        private const val GAP_GRACE_MS = 10L * 60 * 1000
+
+        // Reports are queued in prefs until Dart next runs and pushes them to
+        // Firebase (see _flushGapQueue in home_widget_service.dart). Capped so
+        // a device that NEVER runs the app again can't grow the file forever —
+        // oldest dropped first, a recent sample is worth more than a full one.
+        private const val GAP_QUEUE_KEY = "gap_queue"
+        private const val GAP_QUEUE_MAX = 20
     }
 
     override fun onUpdate(
@@ -141,6 +181,12 @@ class NotesWidgetProvider : AppWidgetProvider() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        // Before anything else: has the scheduled refresh chain broken? This
+        // runs for EVERY broadcast reaching us, including the ones that are
+        // themselves proof we're alive — which is exactly when a stale marker
+        // can be seen. See expectedByKey.
+        detectGap(context)
+
         when (intent.action) {
             ACTION_ITEM_CLICK -> {
                 try {
@@ -169,6 +215,17 @@ class NotesWidgetProvider : AppWidgetProvider() {
                     refreshCountdowns(context)
                 } catch (e: Exception) {
                     android.util.Log.e("NotesWidgetProvider", "Unlock refresh failed", e)
+                }
+            }
+
+            ACTION_REARM -> {
+                try {
+                    // Alarm-only on purpose: see the comment on ACTION_REARM.
+                    // It must not rebind the list, or the rebind would ask the
+                    // service for data again and we would feed ourselves forever.
+                    rescheduleAll(context)
+                } catch (e: Exception) {
+                    android.util.Log.e("NotesWidgetProvider", "Re-arm failed", e)
                 }
             }
 
@@ -218,6 +275,97 @@ class NotesWidgetProvider : AppWidgetProvider() {
         for (id in placedWidgetIds(context)) {
             handleTick(context, id)
         }
+    }
+
+    /**
+     * Reports a break in the scheduled-refresh chain, if one has happened.
+     *
+     * [scheduleNextTick] records the exact moment the next tick was armed for.
+     * If a later broadcast finds that moment more than [GAP_GRACE_MS] in the
+     * past, the alarm that should have pushed it forward never ran — which is
+     * what a force-stop looks like from the inside. The alarms are cancelled
+     * *and* the package is put in the stopped state, so nothing wakes us again
+     * until the user taps the widget or the system happens to rebind our list.
+     * The launcher meanwhile keeps painting the RemoteViews it already holds,
+     * so the staleness is completely invisible to us and to the user.
+     *
+     * The marker is removed ONLY once it has been reported, so an early
+     * arrival — an unlock refresh, a tap — leaves it alone and keeps guarding
+     * the same deadline. The re-arm that follows then overwrites it.
+     *
+     * One report per call, the deepest gap: widgets on one device fail
+     * together, so they would all be the same outage.
+     */
+    private fun detectGap(context: Context) {
+        try {
+            val prefs = HomeWidgetPlugin.getData(context)
+            val now = System.currentTimeMillis()
+            var worstId = AppWidgetManager.INVALID_APPWIDGET_ID
+            var worstExpected = 0L
+            for (id in placedWidgetIds(context)) {
+                val expected = prefs.getLong(expectedByKey(id), 0L)
+                if (expected in 1..(now - GAP_GRACE_MS) && expected > worstExpected) {
+                    worstId = id
+                    worstExpected = expected
+                }
+            }
+            if (worstId == AppWidgetManager.INVALID_APPWIDGET_ID) return
+            prefs.edit().remove(expectedByKey(worstId)).apply()
+            reportGap(context, worstExpected, now, worstId)
+        } catch (e: Exception) {
+            android.util.Log.e("NotesWidgetProvider", "Gap detection failed", e)
+        }
+    }
+
+    /**
+     * Queues one gap report for Dart to ship (see `_flushGapQueue` in
+     * home_widget_service.dart), which is also where it is cleared.
+     *
+     * Deliberately shaped as telemetry rather than diagnostics: how long the
+     * chain was dead, when it was due and when it was noticed, plus enough
+     * device context to tell a per-model problem from a per-device one. No note
+     * content, no note ids — the widget id is there only so two widgets on one
+     * phone can be seen to report the same outage, and is meaningless alone.
+     *
+     * The logcat line matters just as much as the queue: this is read on-device
+     * during the overnight captures, where Firebase is not in the loop yet.
+     */
+    private fun reportGap(context: Context, expectedAt: Long, detectedAt: Long, appWidgetId: Int) {
+        val gapMs = detectedAt - expectedAt
+        android.util.Log.w(
+            "NotesWidgetProvider",
+            "GAP: countdown chain broke — tick was due $expectedAt, noticed " +
+                "$detectedAt ($gapMs ms late, widget $appWidgetId)"
+        )
+        try {
+            val prefs = HomeWidgetPlugin.getData(context)
+            val queue = JSONArray(prefs.getString(GAP_QUEUE_KEY, "[]") ?: "[]")
+            queue.put(
+                JSONObject().apply {
+                    put("gapMs", gapMs)
+                    put("expectedAt", expectedAt)
+                    put("detectedAt", detectedAt)
+                    put("widgetId", appWidgetId)
+                    put("model", Build.MODEL)
+                    put("sdk", Build.VERSION.SDK_INT)
+                    put("hourOfDay", java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY))
+                    put("version", appVersionName(context))
+                }
+            )
+            // Oldest dropped first: a recent sample beats a full history, and
+            // this file may never be read by a device that never opens us.
+            while (queue.length() > GAP_QUEUE_MAX) queue.remove(0)
+            prefs.edit().putString(GAP_QUEUE_KEY, queue.toString()).apply()
+        } catch (e: Exception) {
+            android.util.Log.e("NotesWidgetProvider", "Failed to queue gap report", e)
+        }
+    }
+
+    private fun appVersionName(context: Context): String = try {
+        @Suppress("DEPRECATION")
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "unknown"
+    } catch (e: Exception) {
+        "unknown"
     }
 
     /**
@@ -641,12 +789,22 @@ class NotesWidgetProvider : AppWidgetProvider() {
      * would otherwise silently freeze the countdowns.
      */
     private fun reschedule(context: Context, appWidgetId: Int, payloadStr: String?) {
-        if (payloadStr.isNullOrEmpty()) return
+        if (payloadStr.isNullOrEmpty()) {
+            // Nothing pinned means nothing ticking — drop the marker too, or
+            // detectGap would later read an abandoned deadline as an outage.
+            clearExpectedBy(context, appWidgetId)
+            return
+        }
         try {
             val payload = JSONObject(payloadStr)
             if (payload.optString("type") == "todo" || payload.optString("type") == "timed") {
                 scheduleExpiryRefresh(context, appWidgetId, payload)
                 scheduleNextTick(context, appWidgetId, payload)
+            } else {
+                // updateWidget cancels explicitly for these types, but this
+                // path can skip updateWidget entirely (a verify or soft hit),
+                // so the marker has to be cleared here as well.
+                clearExpectedBy(context, appWidgetId)
             }
         } catch (e: Exception) {
             android.util.Log.e("NotesWidgetProvider", "Reschedule failed", e)
@@ -831,7 +989,13 @@ class NotesWidgetProvider : AppWidgetProvider() {
             val pending = tickPendingIntent(context, appWidgetId)
             alarmManager.cancel(pending)
 
-            val items = payload.optJSONArray("todoList") ?: return
+            // No list means no countdown to follow — we already cancelled the
+            // alarm above, so the marker must go with it or every later
+            // broadcast would see a deadline nothing is going to meet.
+            val items = payload.optJSONArray("todoList") ?: run {
+                clearExpectedBy(context, appWidgetId)
+                return
+            }
             val now = System.currentTimeMillis()
             var next = Long.MAX_VALUE
             for (i in 0 until items.length()) {
@@ -840,7 +1004,13 @@ class NotesWidgetProvider : AppWidgetProvider() {
                 val due = item.getLong("dueMs")
                 if (due > now && due < next) next = due
             }
-            if (next == Long.MAX_VALUE) return
+            if (next == Long.MAX_VALUE) {
+                // Nothing left to count down to. No alarm, nothing to guard —
+                // drop the marker instead of letting it age into a phantom
+                // gap report on the next broadcast.
+                clearExpectedBy(context, appWidgetId)
+                return
+            }
 
             val triggerAt = nextTickTriggerAt(context, now, next)
             val canExact = Build.VERSION.SDK_INT >= 31 && alarmManager.canScheduleExactAlarms()
@@ -849,6 +1019,11 @@ class NotesWidgetProvider : AppWidgetProvider() {
             } else {
                 alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
             }
+            // Record what we just armed, so detectGap can tell "the chain is
+            // running" from "the chain died and nobody noticed". If arming
+            // threw instead, the OLD marker survives — and it should, because
+            // that really is a broken chain.
+            setExpectedBy(context, appWidgetId, triggerAt)
         } catch (e: Exception) {
             android.util.Log.e("NotesWidgetProvider", "Failed to schedule countdown tick", e)
         }
@@ -891,8 +1066,28 @@ class NotesWidgetProvider : AppWidgetProvider() {
         try {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             alarmManager.cancel(tickPendingIntent(context, appWidgetId))
+            clearExpectedBy(context, appWidgetId)
         } catch (e: Exception) {
             android.util.Log.e("NotesWidgetProvider", "Failed to cancel countdown tick", e)
         }
+    }
+
+    // ---- the gap detector's marker ----------------------------------------
+    // Written by scheduleNextTick, read (and only then removed) by detectGap.
+
+    /** Records "this widget's next tick must have run by [at]". */
+    private fun setExpectedBy(context: Context, appWidgetId: Int, at: Long) {
+        HomeWidgetPlugin.getData(context)
+            .edit()
+            .putLong(expectedByKey(appWidgetId), at)
+            .apply()
+    }
+
+    /** Forgets the marker: nothing is scheduled, so nothing is late. */
+    private fun clearExpectedBy(context: Context, appWidgetId: Int) {
+        HomeWidgetPlugin.getData(context)
+            .edit()
+            .remove(expectedByKey(appWidgetId))
+            .apply()
     }
 }
