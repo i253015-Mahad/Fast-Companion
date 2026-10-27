@@ -145,27 +145,30 @@ class HomeWidgetService {
       // the device and the OS, not about a person.
     };
 
-    // One shared node is what makes a fleet count queryable in one place, so
-    // try it first. Rules for it live in the console rather than in this
-    // repo, and a denied write must not mean "no telemetry ever" — hence the
-    // fallback into the signed-in user's own subtree, which the note writes
-    // already prove is writable.
-    final db = FirebaseDatabase.instanceFor(
-      app: Firebase.app(),
-      databaseURL: kRtdbUrl,
-    );
+    // Restore first: both writes below want a signed-in handle.
+    await _ensureSessions();
+    final sessions = MultiAccountAuthService.instance.sessions.values.toList();
 
-    final sharedErr = await _trySet(db.ref('diagnostics/widget_gaps'), payload);
+    // One shared node is what makes a fleet count queryable in one place, so
+    // try it first. Its rule is `auth != null`, so it has to be written
+    // through a signed-in handle: reaching for FirebaseDatabase.instance here
+    // would send it with no auth at all, because this app keeps per-account
+    // sessions and the default app is routinely signed out — the exact null
+    // uid that made the first version of this fail every time. A denied write
+    // must not mean "no telemetry ever" either, hence the fallback below.
+    final sharedDb = sessions.isNotEmpty
+        ? sessions.first.database
+        : FirebaseDatabase.instanceFor(
+            app: Firebase.app(),
+            databaseURL: kRtdbUrl,
+          );
+
+    final sharedErr = await _trySet(sharedDb.ref('diagnostics/widget_gaps'), payload);
     if (sharedErr == null) return null;
     debugPrint('gap flush: shared node refused — $sharedErr');
 
     // Fall back into the signed-in user's own subtree, which the note writes
-    // already prove is writable. Read the session from MultiAccountAuthService,
-    // NOT FirebaseAuth.instance: this app keeps per-account sessions, so the
-    // default app's auth is routinely signed out while a real one is live —
-    // which is why a uid taken from there comes back null every time.
-    await _ensureSessions();
-    final sessions = MultiAccountAuthService.instance.sessions.values.toList();
+    // already prove is writable.
     if (sessions.isEmpty) return 'no live session to write under';
 
     for (final session in sessions) {
