@@ -45,6 +45,11 @@ dependencies:
   # Where the account photos are kept once fetched, so the avatar still
   # has a picture when the phone is offline.
   path_provider: ^2.1.5
+  # The system "Save as" picker for portal downloads (admit card, fee
+  # challan). A WebView has no DownloadListener of its own, so the file
+  # is fetched with the Flex session in Dart and handed to SAF — which
+  # needs no storage permission on any Android version.
+  flutter_file_dialog: ^3.3.3
   # Runs the Flex marks check some hours after a sign-in, without the app
   # open. One deferred check per sign-in — see flex_background_poller.dart
   # for why the portal's five-request session rules out a periodic task.

@@ -54,6 +54,13 @@ class FlexSessionService {
   static const String _cookiePref = 'flex_session_cookie';
   static const Duration _timeout = Duration(seconds: 15);
 
+  /// Downloads get a longer leash than page reads. Both go through the
+  /// portal's five-request session budget, but a page is kilobytes and
+  /// a challan PDF is hundreds — on slow mobile data 15 s can expire
+  /// mid-transfer, and a timeout here surfaces to the student as
+  /// "could not download" for a file that was seconds away.
+  static const Duration _downloadTimeout = Duration(seconds: 45);
+
   /// Sent alongside the cookie so the portal sees an ordinary browser.
   /// The default `Dart/x.y` agent would otherwise mark our requests out
   /// as non-browser traffic.
@@ -220,6 +227,83 @@ class FlexSessionService {
     } catch (e) {
       debugPrint('Flex fetch failed: $e');
       return (status: null, loginRedirect: false, body: null);
+    }
+  }
+
+  /// Downloads a file the portal serves as an attachment — the admit card
+  /// and the fee challan are the ones students actually want.
+  ///
+  /// The reason this exists: a WebView has no `DownloadListener` of its
+  /// own, so a `Content-Disposition: attachment` response is dropped
+  /// without a word and the page sits loading forever. Chrome shows a
+  /// save dialog precisely because it registered one. The app therefore
+  /// fetches the file itself, under the session the WebView established,
+  /// and hands the bytes to the system's own save picker — an external
+  /// browser cannot be used instead because it carries no Flex cookie
+  /// and would receive the sign-in page in place of the file.
+  ///
+  /// Takes the absolute [url] rather than a portal path because its
+  /// callers only ever hold one: the URL the WebView was about to load,
+  /// or the one the download event reported. The host is checked for
+  /// that same reason — the cookie header below must not travel to a
+  /// server that is not the portal's, whatever link pointed there.
+  ///
+  /// Same failure vocabulary as [fetchPage]: `status` is `null` when the
+  /// request never completed, `loginRedirect` says the session died, and
+  /// `bytes` is `null` whenever the file was not obtained. `contentType`
+  /// is passed through so the caller can sanity-check that it really is
+  /// a file — a lapsed session answers with the sign-in HTML at the
+  /// download's own URL, and that must never be saved as `admit-card.pdf`.
+  Future<
+    ({
+      int? status,
+      bool loginRedirect,
+      Uint8List? bytes,
+      String? contentType,
+    })
+  >
+  fetchBytes(Uri url) async {
+    if (!hasSession) {
+      return (status: null, loginRedirect: false, bytes: null, contentType: null);
+    }
+    if (url.host != Uri.parse(baseUrl).host) {
+      debugPrint('Flex download refused: off-portal host ${url.host}');
+      return (status: null, loginRedirect: false, bytes: null, contentType: null);
+    }
+    try {
+      final response = await http
+          .get(url, headers: _headers)
+          .timeout(_downloadTimeout);
+      if (response.statusCode != 200) {
+        return (
+          status: response.statusCode,
+          loginRedirect: false,
+          bytes: null,
+          contentType: null,
+        );
+      }
+      final contentType = response.headers['content-type'];
+      // The sign-in page arrives as HTML under the download's own URL,
+      // so content type is the tell: no real file here comes back as
+      // `text/html`. Checking the marker rather than only the type keeps
+      // a legitimate HTML response from being misread as a dead session.
+      if (contentType != null && contentType.contains('text/html')) {
+        return (
+          status: 200,
+          loginRedirect: response.body.contains(_loginMarker),
+          bytes: null,
+          contentType: contentType,
+        );
+      }
+      return (
+        status: 200,
+        loginRedirect: false,
+        bytes: response.bodyBytes,
+        contentType: contentType,
+      );
+    } catch (e) {
+      debugPrint('Flex download failed: $e');
+      return (status: null, loginRedirect: false, bytes: null, contentType: null);
     }
   }
 

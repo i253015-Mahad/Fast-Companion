@@ -1,8 +1,10 @@
 // lib/Screens/flex_screen.dart
 
+import 'dart:async';
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_file_dialog/flutter_file_dialog.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -455,6 +457,32 @@ class _FlexScreenState extends State<FlexScreen> {
     caseSensitive: false,
   );
 
+  /// The portal opens its downloads with `window.open(url, '_blank')` —
+  /// the fee challan's Print button does exactly that.
+  ///
+  /// A WebView has no windows to give: with `supportMultipleWindows` off
+  /// the call is discarded before any request goes out, and with it on
+  /// Android reports `request.url` as `null` for a JavaScript-created
+  /// window, so there is still nothing to load. Rather than grow a
+  /// hidden popup WebView just to host a response that cannot be
+  /// displayed anyway, the call is folded into a navigation of the
+  /// current page. The document is replaced, but it is replaced by the
+  /// file — which [onDownloadStarting] then catches and saves, exactly
+  /// as it does for the admit card's plain link.
+  static final String _windowOpenScript = '''
+(function () {
+  var originalOpen = window.open;
+  window.open = function (url) {
+    if (!url) { return originalOpen.apply(window, arguments); }
+    window.location.href = url;
+    // A stub rather than null: a page that keeps the handle and calls
+    // .focus() or .close() on it would throw otherwise, and none of
+    // those operations mean anything here.
+    return { focus: function () {}, close: function () {} };
+  };
+})();
+''';
+
   InAppWebViewController? _controller;
   late final PullToRefreshController _pullToRefresh;
 
@@ -583,6 +611,11 @@ class _FlexScreenState extends State<FlexScreen> {
             // Needed so the system, not the WebView, decides what happens
             // with mail links and downloads.
             useShouldOverrideUrlLoading: true,
+            // Registers the Android DownloadListener that fires
+            // onDownloadStarting. Without this the callback never runs —
+            // the portal's attachments are dropped in silence, which is
+            // exactly the "keeps loading forever" bug this fixes.
+            useOnDownloadStart: true,
           ),
           // Injected at document start so the page is already dark by the
           // time it paints — doing it after load would flash white first.
@@ -600,6 +633,14 @@ class _FlexScreenState extends State<FlexScreen> {
               source: _autofillScript,
               injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
               forMainFrameOnly: false,
+            ),
+            // Main frame only: popups are a top-level document concern,
+            // and a nested frame rewriting window.open would rewrite it
+            // for itself alone.
+            UserScript(
+              source: _windowOpenScript,
+              injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+              forMainFrameOnly: true,
             ),
           ]),
           pullToRefreshController: _pullToRefresh,
@@ -644,7 +685,11 @@ class _FlexScreenState extends State<FlexScreen> {
             final scheme = url.scheme.toLowerCase();
             if (scheme == 'http' || scheme == 'https') {
               if (_downloadRe.hasMatch(url.path)) {
-                await _launchExternally(url);
+                // Saved through the session rather than opened in a
+                // browser: these links sit behind the Flex login, and an
+                // external browser carries no cookie — it would show the
+                // sign-in page instead of the file.
+                unawaited(_saveDownload(url));
                 return NavigationActionPolicy.CANCEL;
               }
               // A normal page: keep it in the tab.
@@ -654,6 +699,24 @@ class _FlexScreenState extends State<FlexScreen> {
             // mailto:, tel:, intent:… anything that isn't a web page.
             await _launchExternally(url);
             return NavigationActionPolicy.CANCEL;
+          },
+          // Fires for every response the portal marks as a download,
+          // whatever the URL looks like — which is the only reason the
+          // admit card is catchable at all: its link
+          // (/Student/PrintAdmitCard?semid=…) carries no file extension,
+          // so URL matching can never see it coming.
+          onDownloadStarting: (controller, downloadStartRequest) async {
+            unawaited(
+              _saveDownload(
+                downloadStartRequest.url,
+                suggestedName: downloadStartRequest.suggestedFilename,
+                mimeType: downloadStartRequest.mimeType,
+              ),
+            );
+            // Nothing left for the WebView to do — the response was an
+            // attachment it cannot display, and the fetch above already
+            // replays the session it would have needed.
+            return null;
           },
         ),
         if (_failed)
@@ -704,6 +767,109 @@ class _FlexScreenState extends State<FlexScreen> {
     } catch (e) {
       debugPrint('Could not open $url: $e');
     }
+  }
+
+  /// Fetches a portal download under the Flex session and hands it to
+  /// the system's own "Save as" picker.
+  ///
+  /// This is the fix for the admit card / fee challan hanging forever.
+  /// Chrome shows a download prompt because it registered a
+  /// `DownloadListener`; a bare WebView has none, so a
+  /// `Content-Disposition: attachment` response was dropped without a
+  /// word and the page sat loading indefinitely. The file is therefore
+  /// fetched here — with the session cookie the WebView established, so
+  /// an expired session is reported rather than saved as the sign-in
+  /// page wearing a PDF's name — and SAF does the saving, which needs
+  /// no storage permission and lets the student choose the destination
+  /// (Downloads, Drive, anywhere) exactly like Chrome's prompt would.
+  ///
+  /// [suggestedName] and [mimeType] come from the download event when
+  /// there is one; the URL is the fallback for links intercepted before
+  /// a response existed to describe them.
+  Future<void> _saveDownload(
+    Uri url, {
+    String? suggestedName,
+    String? mimeType,
+  }) async {
+    // The aborted navigation never reaches onLoadStop, so the header
+    // spinner would keep turning over a page that is already back on
+    // screen. This is the "just kept loading" symptom, cleared at the
+    // one point that knows the load ended as a download.
+    if (mounted) setState(() => _loading = false);
+
+    final result = await FlexSessionService.instance.fetchBytes(url);
+    if (!mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final bytes = result.bytes;
+    if (bytes == null) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            result.loginRedirect
+                ? 'Your Flex session has expired. '
+                      'Sign in again, then retry the download.'
+                : 'Could not download the file. '
+                      'Check your connection and try again.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final name = _downloadFileName(url, suggestedName, mimeType);
+    try {
+      final saved = await FlutterFileDialog.saveFile(
+        params: SaveFileDialogParams(data: bytes, fileName: name),
+      );
+      // null means the student dismissed the picker — not an error, so
+      // no message; the file simply was not saved anywhere.
+      if (saved != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Saved $name')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Flex save failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not save the file.')),
+        );
+      }
+    }
+  }
+
+  /// The file name the save picker opens with, best source first.
+  ///
+  /// The download event's suggestion already reflects the portal's
+  /// `Content-Disposition` header, so it wins when present. The URL's
+  /// last segment is the fallback for intercepted links, and a missing
+  /// extension is filled from the MIME type — a file the system cannot
+  /// type is a file no app will offer to open.
+  static String _downloadFileName(
+    Uri url,
+    String? suggested,
+    String? mimeType,
+  ) {
+    var name = (suggested ?? '').trim();
+    if (name.isEmpty) {
+      final segment = url.pathSegments.isNotEmpty ? url.pathSegments.last : '';
+      name = segment.trim();
+    }
+    if (name.isEmpty || !name.contains('.')) {
+      final ext = switch (mimeType?.toLowerCase() ?? '') {
+        'application/pdf' => 'pdf',
+        'text/csv' => 'csv',
+        var m when m.contains('wordprocessingml') => 'docx',
+        var m when m.contains('msword') => 'doc',
+        var m when m.contains('spreadsheetml') => 'xlsx',
+        var m when m.contains('ms-excel') => 'xls',
+        var m when m.contains('zip') => 'zip',
+        _ => 'pdf', // what the portal serves more than anything else
+      };
+      name = name.isEmpty ? 'flex-download.$ext' : '$name.$ext';
+    }
+    return name;
   }
 
   /// Asks before signing out — re-entering university credentials on a
