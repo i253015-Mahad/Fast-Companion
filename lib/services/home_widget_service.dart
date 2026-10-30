@@ -59,12 +59,17 @@ class HomeWidgetService {
     flushGapQueue();
 
     final ids = await widgetIds();
+    // Worth one line: the provider only ever answers if these are known, and
+    // a silent empty here means no repair, no re-arm and no gap detection —
+    // nothing else in the app would notice.
+    debugPrint('widget ids: $ids');
     if (ids.isEmpty) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     for (final id in ids) {
       await HomeWidget.saveWidgetData<int>('$_kVerifyPrefix$id', now);
     }
     await HomeWidget.updateWidget(androidName: _androidWidgetName);
+    debugPrint('widget verify broadcast sent for $ids');
 
     // The provider answers that broadcast, and answering it is exactly where
     // detectGap gets its chance to see a stale marker — so flush again once
