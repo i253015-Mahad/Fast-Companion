@@ -25,6 +25,7 @@ import 'services/local_storage_service.dart';
 import 'services/multi_account_auth_service.dart';
 import 'services/home_widget_service.dart';
 import 'services/note_preview.dart';
+import 'services/reminder_notification_service.dart';
 
 // Must match PENDING_TAPS_KEY in NotesWidgetProvider.kt.
 const String _kPendingTaps = 'pending_taps';
@@ -237,6 +238,18 @@ Future<void> _handleTap(Uri? uri) async {
             .timeout(const Duration(seconds: 15));
       } catch (e) {
         debugPrint('⚠️ widget background: body/remaining update failed: $e');
+      }
+
+      // Reminders follow the note — the same call DatabaseService.updateNote
+      // makes after an in-app save. This path writes the local cache itself,
+      // so without it nothing cancels the checked-off task's scheduled
+      // milestones and they keep firing. Its own try, deliberately: an
+      // exception here must not reach the revert path above, which would put
+      // the widget back to unchecked while the server says checked.
+      try {
+        await ReminderNotificationService.syncNote(uid, noteId);
+      } catch (e) {
+        debugPrint('⚠️ widget background: reminder sync failed: $e');
       }
     } else if (uri.host == 'adjustcounter') {
       final index = int.tryParse(uri.queryParameters['index'] ?? '') ?? -1;

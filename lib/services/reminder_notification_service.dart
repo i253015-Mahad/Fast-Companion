@@ -194,6 +194,7 @@ class ReminderNotificationService {
 
     final note = await _loadNote(uid, noteId);
     if (note == null || note.type != 'timed') return;
+    await _cancelShown(uid, note);
     await _scheduleNote(uid, note);
   }
 
@@ -217,6 +218,25 @@ class ReminderNotificationService {
     for (final request in pending) {
       if (request.payload == payload) {
         await _plugin.cancel(id: request.id);
+      }
+    }
+  }
+
+  /// Clears reminders that have ALREADY fired for the checked-off items of
+  /// [note] — [_cancelPending]'s scan only sees notifications still waiting
+  /// to fire, so ticking a task off used to leave its delivered "due in 1
+  /// hour" sitting in the tray. The ids are deterministic: the very formula
+  /// [_scheduleNote] stamps when it schedules, so cancelling them outright
+  /// hits exactly this note's notifications, scheduled or shown.
+  static Future<void> _cancelShown(String uid, Note note) async {
+    for (var i = 0; i < note.todoList.length; i++) {
+      if (!note.todoList[i].isDone) continue;
+      for (var m = 0; m < _milestones.length; m++) {
+        try {
+          await _plugin.cancel(id: _stableId('$uid|${note.id}|$i|$m'));
+        } catch (e) {
+          debugPrint('⚠️ reminder cancel failed (item $i, milestone $m): $e');
+        }
       }
     }
   }

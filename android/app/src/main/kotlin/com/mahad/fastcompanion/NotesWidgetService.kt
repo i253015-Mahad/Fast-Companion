@@ -258,8 +258,15 @@ private class NotesWidgetFactory(
      *
      * This is the same 60_000 threshold formatMeta uses, so exactly one of the
      * two ever renders any given row.
+     *
+     * A checked-off task is not counting down any longer — [formatMeta]'s done
+     * branch freezes it at the remaining time it had when it was ticked. This
+     * used to miss that case, so a future deadline kept a Chronometer ticking
+     * right through the checkbox: the "timer still runs after I checked it"
+     * bug. Done comes first so every done row lands on the frozen text.
      */
     private fun liveRemainingMs(item: JSONObject): Long? {
+        if (item.optBoolean("isDone", false)) return null
         if (item.isNull("dueMs")) return null
         val diff = item.getLong("dueMs") - System.currentTimeMillis()
         return if (diff >= 60_000) diff else null

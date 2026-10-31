@@ -406,6 +406,17 @@ class _TimedTaskScreenState extends State<TimedTaskScreen> {
           // Ticking is a step of its own, and must never fold into whatever
           // was typed into the row just before it.
           _record(discrete: true);
+          // The tick has to take effect now, not whenever this screen is
+          // eventually popped: _save() persists it, pushes the frozen
+          // countdown to the home widget, and re-syncs this note's reminders
+          // (updateNote → syncNote) — until it runs, the checked-off task
+          // keeps its milestone notifications and the widget keeps ticking.
+          // Fire-and-forget with a logged failure: _save already tolerates a
+          // dead network (the local cache wins), and no network wait should
+          // ever block the checkbox.
+          _save().catchError((e) {
+            debugPrint('⚠️ save after check failed: $e');
+          });
         },
       ),
       title: TextFormField(
