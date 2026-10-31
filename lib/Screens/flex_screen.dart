@@ -483,6 +483,27 @@ class _FlexScreenState extends State<FlexScreen> {
 })();
 ''';
 
+  /// Lowers the portal's navigation mask — `[id^="overlay"]` holding
+  /// the `.loader-box` spinner, the pair [_darkModeScript] recolours
+  /// for dark mode. The portal raises it before a navigation and only
+  /// lowers it once the next page loads, so a response that turns into
+  /// a *file* instead of a page leaves it frozen over a perfectly
+  /// interactive screen until a manual refresh rebuilds the document —
+  /// the "keeps loading after I cancel" bug.
+  ///
+  /// [_saveDownload] is the one point that knows the load ended as a
+  /// file rather than a page, so it runs this for both the saved and
+  /// the cancelled outcome. Nothing outlives the fix: the next real
+  /// navigation replaces the document anyway, mask included.
+  static const String _hideMaskScript = '''
+(function () {
+  var masks = document.querySelectorAll('[id^="overlay"], .loader-box');
+  for (var i = 0; i < masks.length; i++) {
+    masks[i].style.setProperty('display', 'none', 'important');
+  }
+})();
+''';
+
   InAppWebViewController? _controller;
   late final PullToRefreshController _pullToRefresh;
 
@@ -797,6 +818,20 @@ class _FlexScreenState extends State<FlexScreen> {
     // one point that knows the load ended as a download.
     if (mounted) setState(() => _loading = false);
 
+    // The portal's own mask went up when Print was pressed, and only
+    // the next page load — which this download replaces with a file —
+    // could take it down again, leaving "Loading, please wait…"
+    // frozen over an interactive page until a manual refresh. Hidden
+    // here, before the fetch, so the student lands on a usable page
+    // whichever way the picker below ends (saved or cancelled).
+    try {
+      await _controller?.evaluateJavascript(source: _hideMaskScript);
+    } catch (e) {
+      // Controller gone mid-dispose — the page is being torn down
+      // with it, so there is no mask left to clear.
+      debugPrint('Flex mask hide failed: $e');
+    }
+
     final result = await FlexSessionService.instance.fetchBytes(url);
     if (!mounted) return;
 
@@ -805,12 +840,18 @@ class _FlexScreenState extends State<FlexScreen> {
     if (bytes == null) {
       messenger.showSnackBar(
         SnackBar(
+          // Themed at the call site: MaterialApp sets no theme, so the
+          // default Material grey is what shows without this. Failures
+          // take the dark teal surface (as the dialogs do), success the
+          // card orange used by home_screen's confirmations.
+          backgroundColor: AppColors.navBar,
           content: Text(
             result.loginRedirect
                 ? 'Your Flex session has expired. '
                       'Sign in again, then retry the download.'
                 : 'Could not download the file. '
                       'Check your connection and try again.',
+            style: const TextStyle(color: Colors.white),
           ),
         ),
       );
@@ -826,14 +867,26 @@ class _FlexScreenState extends State<FlexScreen> {
       // no message; the file simply was not saved anywhere.
       if (saved != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Saved $name')),
+          SnackBar(
+            backgroundColor: AppColors.cardOrange,
+            content: Text(
+              'Saved $name',
+              style: const TextStyle(color: Colors.black87),
+            ),
+          ),
         );
       }
     } catch (e) {
       debugPrint('Flex save failed: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save the file.')),
+          const SnackBar(
+            backgroundColor: AppColors.navBar,
+            content: Text(
+              'Could not save the file.',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
         );
       }
     }
