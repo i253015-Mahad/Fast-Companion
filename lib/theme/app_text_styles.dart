@@ -18,4 +18,16 @@ class AppTextStyles {
     fontSize: 14,
     color: AppColors.textDark,
   );
+
+  // Body copy for overlays and sheets — same size as [cardBody], kept as
+  // its own name because the marks analytics calls for "body" semantics.
+  static const body = TextStyle(
+    fontSize: 14,
+    color: AppColors.textDark,
+  );
+
+  static const bodySmall = TextStyle(
+    fontSize: 12,
+    color: AppColors.textDark,
+  );
 }

@@ -15,8 +15,6 @@ import 'models/note.dart';
 import 'services/local_storage_service.dart';
 import 'services/multi_account_auth_service.dart'; // NEW (Fix 3b)
 import 'services/reminder_notification_service.dart';
-import 'services/flex_alert_notifier.dart';
-import 'services/flex_background_poller.dart';
 import 'app_signals.dart';
 
 // Required so the widget-configuration entry point (used by
@@ -105,12 +103,11 @@ Future<void> _openNoteFromWidget(Map<String, dynamic> args) async {
 // main(): every notification the app raises shares one plugin and one tap
 // callback, so this is the single place that decides what a tap means.
 Future<void> _dispatchNotificationTap(String payload) async {
-  if (payload.startsWith(FlexAlertNotifier.payloadPrefix)) {
-    // The Flex tab. Nothing else to resolve — the home screen is listening
-    // and will show the tab the alert is about.
-    FlexAlertNotifier.pendingTap.value = true;
-    return;
-  }
+  // Flex alerts were removed from the app. A notification raised by an
+  // older build may still sit in the tray: ignoring it here keeps it from
+  // being misread as a `uid|noteId` reminder below.
+  if (payload.startsWith('flex|')) return;
+
   final parts = payload.split('|');
   if (parts.length == 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
     await _openNoteFromWidget({'uid': parts[0], 'noteId': parts[1]});
@@ -129,19 +126,13 @@ void main() async {
 
   await HomeWidget.registerInteractivityCallback(widgetBackgroundCallback);
 
-  // The one deferred Flex marks check. Registered before runApp because
-  // WorkManager keeps no Dart state of its own: the callback is looked up by
-  // name whenever the delay elapses, which may be hours later with this
-  // isolate long gone.
-  await FlexBackgroundPoller.initialize();
-
   // One plugin means one tap callback, registered by
   // ReminderNotificationService — so every notification tap arrives here
   // and is told apart by its payload's shape. A reminder is `uid|noteId`
-  // and opens that note; a Flex alert is `flex|uid` and lands on the Flex
-  // tab. The prefix is checked first because the reminder parser cannot
-  // make the distinction itself: it would read a Flex payload as a note
-  // whose id happens to be a uid and open nothing, silently, every time.
+  // and opens that note. The `flex|` prefix of the removed Flex alerts is
+  // checked first so an older build's leftover tray notification is
+  // ignored rather than misread as a note id: it would open nothing,
+  // silently, every time.
   // (Cold starts launched *by* the tap are handled below via launch details.)
   ReminderNotificationService.onNotificationTap = _dispatchNotificationTap;
 
@@ -157,14 +148,18 @@ void main() async {
   // NEW (Fix 3b): cold start. If the app was launched by the widget's edit
   // button, MainActivity holds the request until we ask for it here.
   WidgetsBinding.instance.addPostFrameCallback((_) async {
+    // Leftovers from the removed Flex alerts: two fixed notification ids
+    // and a channel that no build raises any more. Tidy them up before the
+    // reminders below get scheduled — they touch neither.
+    await ReminderNotificationService.cancelLegacyFlexAlerts();
+
     // Timed-task reminders: schedule everything first (local, fast), then
     // ask for the Android 13+ notification permission — at most once.
     await ReminderNotificationService.syncAll();
     await ReminderNotificationService.requestPermissionOnce();
 
     // Or cold start launched by TAPPING a notification — open that note
-    // instead of the widget's pending edit request, or switch to the Flex
-    // tab if the tap was a Flex alert.
+    // instead of the widget's pending edit request.
     final launch = await ReminderNotificationService.launchDetails();
     if (launch != null && launch.didNotificationLaunchApp) {
       await _dispatchNotificationTap(launch.notificationResponse?.payload ?? '');

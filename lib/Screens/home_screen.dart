@@ -23,10 +23,6 @@ import 'package:fast_companion/services/multi_account_auth_service.dart';
 import 'package:fast_companion/services/profile_photo_cache.dart';
 import 'package:fast_companion/services/home_widget_service.dart';
 import 'package:fast_companion/services/reminder_notification_service.dart';
-import 'package:fast_companion/services/flex_alert_notifier.dart';
-import 'package:fast_companion/services/flex_alert_poller.dart';
-import 'package:fast_companion/services/flex_background_poller.dart';
-import 'package:fast_companion/services/flex_session_service.dart';
 import '../app_signals.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -59,17 +55,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// Which child of the IndexedStack below is the Flex tab.
   ///
-  /// One place to name it, because it is now referred to from three — the
-  /// nav bar, the notification tap-through, and the resume check — and a
-  /// literal repeated in each is a mismatch waiting to be introduced by
-  /// reordering the tabs.
+  /// One place to name it, because it is referred to from more than one —
+  /// the nav bar among them — and a literal repeated in each is a mismatch
+  /// waiting to be introduced by reordering the tabs.
   static const int _flexTabIndex = 3;
-
-  /// Set while a Flex poll is running, so a second trip to the tab does not
-  /// start a second one. The portal serves a session exactly five requests
-  /// and then refuses, so two overlapping polls would spend most of that
-  /// budget fetching the same three pages twice.
-  bool _flexPolling = false;
 
   // Live vertical drag distance (px) on the account avatar, for the
   // swipe-up/down-to-switch-account gesture. Negative = swiping up.
@@ -506,44 +495,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     _initState();
     homeRefreshSignal.addListener(_handleExternalRefreshSignal);
-    FlexAlertNotifier.pendingTap.addListener(_handleFlexAlertTap);
-    // A sign-in is the only moment worth arming the deferred marks check —
-    // see FlexBackgroundPoller for why it is exactly one per sign-in.
-    FlexSessionService.instance.addSessionListener(_onFlexSessionChanged);
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
     homeRefreshSignal.removeListener(_handleExternalRefreshSignal);
-    FlexAlertNotifier.pendingTap.removeListener(_handleFlexAlertTap);
-    FlexSessionService.instance.removeSessionListener(_onFlexSessionChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
-  }
-
-  /// A session was just adopted out of the WebView — i.e. the student has
-  /// signed in (or re-signed in; the portal never rotates a cookie, so a
-  /// real change means a new session).
-  ///
-  /// Scheduling here rather than on a timer is what keeps the portal's
-  /// five-request budget intact: the check is armed by a sign-in, and only
-  /// by a sign-in.
-  void _onFlexSessionChanged() {
-    final uid = _activeNotesUid;
-    // Loud on purpose. This runs exactly once per sign-in, in a window the
-    // existing code already documents as racy — and a silent skip here means
-    // no background check until the NEXT sign-in, which looks identical from
-    // the outside to the schedule never having been wired up at all.
-    if (uid == null) {
-      debugPrint(
-        'Flex background: session changed but no active uid — '
-        'check not armed',
-      );
-      return;
-    }
-    debugPrint('Flex background: session changed, arming check for $uid');
-    FlexBackgroundPoller.schedule(uid);
   }
 
   @override
@@ -556,82 +515,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed && _activeNotesUid != null) {
       _refreshLocalNotes();
     }
-    // The Flex tab is on screen and the student just came back to the app —
-    // the most likely moment they want to know whether anything moved. The
-    // per-source TTLs decide whether this costs anything at all, so a
-    // resume a minute after the last check spends no requests.
-    if (state == AppLifecycleState.resumed && _navIndex == _flexTabIndex) {
-      _pollFlexAlerts();
-    }
   }
 
   void _handleExternalRefreshSignal() {
     if (mounted) _refreshLocalNotes();
-  }
-
-  /// A Flex alert was tapped: show the tab it is about, then poll.
-  ///
-  /// This runs before any widget knows what a tap meant — the notifier only
-  /// carries a flag — so the switch happens here, where the tabs live. The
-  /// poll follows because the student has just asked "what changed?" by
-  /// tapping, and answering from a snapshot fetched last week would defeat
-  /// the point of the tap.
-  void _handleFlexAlertTap() {
-    if (!FlexAlertNotifier.pendingTap.value || !mounted) return;
-    FlexAlertNotifier.pendingTap.value = false;
-    if (_navIndex != _flexTabIndex) {
-      setState(() {
-        _navIndex = _flexTabIndex;
-        _isMenuOpen = false;
-      });
-    }
-    _pollFlexAlerts();
-  }
-
-  /// Asks the portal whether fees, marks or grades have changed, and lets
-  /// the poll raise the one notification if they have.
-  ///
-  /// In-app only and by design: the portal serves a session exactly five
-  /// requests and refuses the sixth, so polling on a timer would spend the
-  /// session before the student ever opens the tab. Running when they do
-  /// means the answers arrive when someone is there to read them — and the
-  /// poll's own per-source TTLs mean a quick return to the tab costs
-  /// nothing at all.
-  Future<void> _pollFlexAlerts() async {
-    if (_flexPolling) return;
-
-    // The account has to be resolved before a single request goes out.
-    //
-    // Session restore runs in the background, so on a cold start the Flex
-    // tab is often tapped while it is still going, and _activeNotesUid is
-    // still null. The old fallback to _dbService.uid did not help: that
-    // reports the literal sentinel "anonymous" whenever Firebase has no
-    // current user, which is exactly the cold-start window. A poll in it
-    // spends four of the portal's five requests writing a snapshot under a
-    // key nobody will ever read, and leaves the real account's snapshot
-    // uncompared — so a student whose habit is to open the app straight
-    // onto the Flex tab would forfeit most of the session on every launch
-    // and still not be told what changed.
-    //
-    // Skipping costs only that one visit; the next one polls properly.
-    final uid = _activeNotesUid;
-    if (uid == null) return;
-
-    _flexPolling = true;
-    try {
-      await FlexAlertPoller().poll(uid);
-      // The student has just been told what changed, at a cost of up to
-      // four of the portal's five requests. The deferred check exists only
-      // for the case where they did NOT look — firing it after this would
-      // spend two more on an answer they already have.
-      await FlexBackgroundPoller.cancel();
-    } catch (e) {
-      // A poll is a background nicety. If it throws it must not take the
-      // screen with it — the student still has the portal in the WebView.
-      debugPrint('Flex alert poll failed: $e');
-    } finally {
-      _flexPolling = false;
-    }
   }
 
   Future<void> _initState() async {
@@ -1745,9 +1632,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _navIndex = index;
           _isMenuOpen = false;
         });
-        // Shown, then asked whether anything changed. Polling on arrival
-        // rather than on a timer is deliberate — see [_pollFlexAlerts].
-        if (index == _flexTabIndex) _pollFlexAlerts();
       },
       child: Column(
         mainAxisSize: MainAxisSize.min,

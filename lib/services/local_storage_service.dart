@@ -130,4 +130,28 @@ class LocalStorageService {
       debugPrint("Active account clear failed: $e");
     }
   }
+
+  // ================= FLEX MARKS CACHE =================
+
+  static const String _flexMarksKey = 'cached_flex_marks';
+
+  static Future<void> saveFlexMarks(String jsonStr) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_flexMarksKey, jsonStr);
+    } catch (e) {
+      debugPrint("Flex marks cache save failed: $e");
+    }
+  }
+
+  static Future<String> loadFlexMarks() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      return prefs.getString(_flexMarksKey) ?? '';
+    } catch (e) {
+      debugPrint("Flex marks cache load failed: $e");
+      return '';
+    }
+  }
 }

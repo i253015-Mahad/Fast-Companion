@@ -116,6 +116,27 @@ class ReminderNotificationService {
     return _plugin.getNotificationAppLaunchDetails();
   }
 
+  // ------------------------------------------------------- legacy cleanup
+
+  /// Removes what the removed Flex-alert feature left behind: its two
+  /// notification ids (a "here's what changed" summary and a "session
+  /// expired" notice) and the channel they were posted on.
+  ///
+  /// Notifications raised by an older build survive an app update, and the
+  /// channel stays in Android's notification settings forever otherwise —
+  /// a settings entry nothing can ever post to again. Touches only those
+  /// two ids and that one channel, never a scheduled reminder.
+  static Future<void> cancelLegacyFlexAlerts() async {
+    await init();
+    try {
+      await _plugin.cancel(id: 0x464c4558); // "FLEX"
+      await _plugin.cancel(id: 0x45585058); // "EXPX"
+      await _android?.deleteNotificationChannel(channelId: 'flex_alerts');
+    } catch (e) {
+      debugPrint("Legacy flex alert cleanup failed: $e");
+    }
+  }
+
   // ------------------------------------------------------ user settings
 
   static Future<bool> isEnabled() async {
