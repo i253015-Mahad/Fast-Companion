@@ -1,6 +1,7 @@
 // lib/screens/home_screen.dart
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
@@ -600,6 +601,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final uid = _activeNotesUid;
     if (uid == null) return;
     final messenger = ScaffoldMessenger.of(context);
+
+    // iOS: there is exactly one home-screen widget (the WidgetKit one in
+    // ios/NotesWidget) and it has no configure activity — so there is no
+    // "which widget?" picker to offer. Pin straight to it; the snackbar
+    // points at adding the widget, which is the one step that still happens
+    // outside the app.
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await HomeWidgetService.pinNote(HomeWidgetService.iosWidgetId, uid, note);
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.cardOrange,
+          content: Text(
+            '"${note.title.isEmpty ? 'Untitled' : note.title}" pinned — add the '
+            'Notes widget to your Home Screen to see it',
+            style: const TextStyle(color: Colors.black87),
+          ),
+        ),
+      );
+      return;
+    }
 
     final widgets = await HomeWidgetService.widgetSummaries();
     if (!mounted) return;

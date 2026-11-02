@@ -8,11 +8,22 @@ import '../models/note.dart';
 import 'local_storage_service.dart';
 import 'multi_account_auth_service.dart';
 
-/// Bridges notes to the Android home screen widgets. Each placed widget
+/// Bridges notes to the home screen widgets. Each placed widget
 /// (identified by its appWidgetId) has its own pinned note.
 class HomeWidgetService {
   // Must match the AppWidgetProvider class name (NotesWidgetProvider.kt).
   static const String _androidWidgetName = 'NotesWidgetProvider';
+
+  // Shared-UserDefaults App Group: the Swift WidgetKit widget
+  // (ios/NotesWidget/NotesWidget.swift) reads the same keys from it. On
+  // Android this is a no-op — setAppGroupId returns true and is ignored.
+  static const String appGroupId = 'group.com.example.notesm';
+
+  // iOS: WidgetKit's kind (StaticConfiguration in NotesWidget.swift) and the
+  // single virtual widget id it uses — iOS has no per-instance appWidgetIds,
+  // so everything the per-id bookkeeping below does runs against this one id.
+  static const String _iosWidgetName = 'NotesWidget';
+  static const int iosWidgetId = -1;
 
   // Comma-separated list of widget ids we've pinned something to, e.g. "12,15".
   static const _kIds = 'widget_ids';
@@ -32,13 +43,24 @@ class HomeWidgetService {
   /// match VERIFY_PREFIX in NotesWidgetProvider.kt.
   static const _kVerifyPrefix = 'verify_';
 
+  /// Asks the platform's widgets to redraw. Android needs the provider class
+  /// name; iOS needs the WidgetKit kind — each side errors if given only the
+  /// other one's name (see HomeWidgetPlugin on both platforms).
+  static Future<void> _broadcastUpdate() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await HomeWidget.updateWidget(iOSName: _iosWidgetName);
+    } else if (defaultTargetPlatform == TargetPlatform.android) {
+      await HomeWidget.updateWidget(androidName: _androidWidgetName);
+    }
+  }
+
   /// Flags [ids] as content-only updates, then triggers the broadcast.
   static Future<void> _requestContentUpdate(List<int> ids) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     for (final id in ids) {
       await HomeWidget.saveWidgetData<int>('$_kSoftUpdatePrefix$id', now);
     }
-    await HomeWidget.updateWidget(androidName: _androidWidgetName);
+    await _broadcastUpdate();
   }
 
   /// Repairs widgets whose views the launcher has thrown away.
@@ -58,6 +80,12 @@ class HomeWidgetService {
     // slow or offline Firebase never delays the widget repair below.
     flushGapQueue();
 
+    // Android-only below: RemoteViews live in the launcher and can be thrown
+    // away when the APK is replaced — that is the whole problem this repairs.
+    // WidgetKit on iOS reads the App Group directly and never goes stale, so
+    // there is nothing to verify and no provider to broadcast to.
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+
     final ids = await widgetIds();
     // Worth one line: the provider only ever answers if these are known, and
     // a silent empty here means no repair, no re-arm and no gap detection —
@@ -68,7 +96,7 @@ class HomeWidgetService {
     for (final id in ids) {
       await HomeWidget.saveWidgetData<int>('$_kVerifyPrefix$id', now);
     }
-    await HomeWidget.updateWidget(androidName: _androidWidgetName);
+    await _broadcastUpdate();
     debugPrint('widget verify broadcast sent for $ids');
 
     // The provider answers that broadcast, and answering it is exactly where

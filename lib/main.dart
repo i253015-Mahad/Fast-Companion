@@ -8,12 +8,14 @@ import 'screens/timed_task_screen.dart';
 import 'screens/edit_note_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:home_widget/home_widget.dart';
 
 import 'models/note.dart';
 import 'services/local_storage_service.dart';
 import 'services/multi_account_auth_service.dart'; // NEW (Fix 3b)
+import 'services/home_widget_service.dart';
 import 'services/reminder_notification_service.dart';
 import 'app_signals.dart';
 
@@ -114,8 +116,25 @@ Future<void> _dispatchNotificationTap(String payload) async {
   }
 }
 
+// Opens the note a home-screen widget tap pointed at. The Swift widget
+// (ios/NotesWidget) tags its URL with `homeWidget` so home_widget recognises
+// it — see HomeWidgetPlugin.isWidgetUrl — and carries the pinned note's
+// uid/noteId as query parameters.
+Future<void> _openNoteFromWidgetUri(Uri uri) async {
+  final uid = uri.queryParameters['uid'];
+  final noteId = uri.queryParameters['noteId'];
+  if (uid == null || uid.isEmpty || noteId == null || noteId.isEmpty) return;
+  await _openNoteFromWidget({'uid': uid, 'noteId': noteId});
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // iOS only: every home_widget read/write on iOS lives in this App Group's
+  // shared UserDefaults (the Swift widget reads the same keys from there).
+  // Must happen before any saveWidgetData/getWidgetData call — on Android
+  // this is a harmless no-op. See ios/NotesWidget and Runner.entitlements.
+  await HomeWidget.setAppGroupId(HomeWidgetService.appGroupId);
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
@@ -124,7 +143,13 @@ void main() async {
         "789024692194-n7ljctd8gv7vgs67kdbr2tjvr37uq1kl.apps.googleusercontent.com",
   );
 
-  await HomeWidget.registerInteractivityCallback(widgetBackgroundCallback);
+  // Android-only: the headless background engine exists for taps on the
+  // Kotlin widget's checkboxes/counter buttons. iOS's registerBackgroundCallback
+  // additionally requires iOS 17+ and our v1 iOS widget has no interactive
+  // controls, so registering there would only be an error path.
+  if (defaultTargetPlatform == TargetPlatform.android) {
+    await HomeWidget.registerInteractivityCallback(widgetBackgroundCallback);
+  }
 
   // One plugin means one tap callback, registered by
   // ReminderNotificationService — so every notification tap arrives here
@@ -141,6 +166,14 @@ void main() async {
   _openNoteChannel.setMethodCallHandler((call) async {
     if (call.method != 'openNote') return;
     await _openNoteFromWidget(Map<String, dynamic>.from(call.arguments as Map));
+  });
+
+  // iOS home-screen widget taps arrive as URLs (the Kotlin widget on Android
+  // uses the MethodChannel above instead, so this stream never fires there).
+  // Fires when the app is already running/backgrounded; the cold-start case
+  // is handled below via initiallyLaunchedFromHomeWidget.
+  HomeWidget.widgetClicked.listen((uri) {
+    if (uri != null) _openNoteFromWidgetUri(uri);
   });
 
   runApp(const MyApp());
@@ -166,11 +199,27 @@ void main() async {
       return;
     }
 
-    final initial = await _openNoteChannel.invokeMethod<Map<dynamic, dynamic>>(
-      'getInitialNote',
-    );
-    if (initial != null) {
-      await _openNoteFromWidget(Map<String, dynamic>.from(initial));
+    // iOS: cold start launched by tapping the home-screen widget (the
+    // `homeWidget`-tagged URL home_widget captured at launch). Android's
+    // widget uses the MethodChannel below instead.
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final widgetUri = await HomeWidget.initiallyLaunchedFromHomeWidget();
+      if (widgetUri != null) {
+        await _openNoteFromWidgetUri(widgetUri);
+        return;
+      }
+    }
+
+    // Android-only: MainActivity holds the widget's pending cold-start
+    // request. The channel has no handler on iOS, and invoking it there
+    // would throw MissingPluginException.
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final initial = await _openNoteChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'getInitialNote',
+      );
+      if (initial != null) {
+        await _openNoteFromWidget(Map<String, dynamic>.from(initial));
+      }
     }
   });
 }

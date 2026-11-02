@@ -56,9 +56,9 @@ class _FlexScreenState extends State<FlexScreen> {
       '.m-topbar { background-color: transparent !important;',
       '  box-shadow: none !important; }',
       'body.m-header--fixed-mobile .m-topbar { top: -51px !important; }',
-      '[id^=\"overlay\"], .loader-box {',
+      '[id^="overlay"], .loader-box {',
       '  background-color: rgba(0,0,0,0.8) !important; }',
-      '[id^=\"overlay\"] *, .loader-box * {',
+      '[id^="overlay"] *, .loader-box * {',
       '  color: #dcdcdc !important; }',
       '.m-login.m-login--1 { background-color: #1a1a1a !important; }',
       '.m-login.m-login--1 h1,',
@@ -215,7 +215,7 @@ class _FlexScreenState extends State<FlexScreen> {
 
   static const String _hideMaskScript = '''
 (function () {
-  var masks = document.querySelectorAll('[id^=\"overlay\"], .loader-box');
+  var masks = document.querySelectorAll('[id^="overlay"], .loader-box');
   for (var i = 0; i < masks.length; i++) {
     masks[i].style.setProperty('display', 'none', 'important');
   }

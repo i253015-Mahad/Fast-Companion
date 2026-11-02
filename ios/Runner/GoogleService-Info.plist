@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>789024692194-pcn0jul1ore87ss81glq4edpq0hqq145.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.789024692194-pcn0jul1ore87ss81glq4edpq0hqq145</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>789024692194-3rkbqt2hchc21jbeeoe5c9ba9vpblard.apps.googleusercontent.com</string>
+	<key>API_KEY</key>
+	<string>AIzaSyBupgrpPKt3t7lS3AiTa5ubQL9qaKGTgKw</string>
+	<key>GCM_SENDER_ID</key>
+	<string>789024692194</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.example.notesm</string>
+	<key>PROJECT_ID</key>
+	<string>fast-companion</string>
+	<key>STORAGE_BUCKET</key>
+	<string>fast-companion.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:789024692194:ios:a44dd8c145d6b25a2c0bbb</string>
+	<key>DATABASE_URL</key>
+	<string>https://fast-companion-default-rtdb.asia-southeast1.firebasedatabase.app</string>
+</dict>
+</plist>

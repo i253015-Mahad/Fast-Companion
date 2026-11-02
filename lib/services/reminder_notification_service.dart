@@ -73,6 +73,11 @@ class ReminderNotificationService {
         AndroidFlutterLocalNotificationsPlugin
       >();
 
+  static IOSFlutterLocalNotificationsPlugin? get _ios =>
+      _plugin.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin
+      >();
+
   // ---------------------------------------------------------------- setup
 
   /// Idempotent — safe to call from the main isolate, the widget's headless
@@ -155,20 +160,28 @@ class ReminderNotificationService {
     }
   }
 
-  /// Android 13+: runtime permission to show notifications at all.
+  /// Android 13+ / iOS: runtime permission to show notifications at all.
   /// Prompted at most once per install; denying is remembered.
+  /// (`resolvePlatformSpecificImplementation` returns null on the other
+  /// platform, so both calls are safe everywhere.)
   static Future<void> requestPermissionOnce() async {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(_permissionAskedKey) ?? false) return;
     await prefs.setBool(_permissionAskedKey, true);
-    await _android?.requestNotificationsPermission();
+    await _requestPlatformPermission();
   }
 
   /// Asks again regardless of the once-guard — used when the user flips the
   /// reminders toggle back on (if already denied, Android simply re-denies
-  /// silently and the user must allow it in system settings).
+  /// silently and the user must allow it in system settings; iOS likewise
+  /// only re-prompts if the system still allows it).
   static Future<void> requestNotificationPermission() async {
+    await _requestPlatformPermission();
+  }
+
+  static Future<void> _requestPlatformPermission() async {
     await _android?.requestNotificationsPermission();
+    await _ios?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
   /// Whether reminders can fire at the exact minute. On Android 14+ this is

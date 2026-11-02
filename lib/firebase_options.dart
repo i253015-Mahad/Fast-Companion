@@ -26,10 +26,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return ios;
       case TargetPlatform.macOS:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for macos - '
@@ -55,6 +52,15 @@ class DefaultFirebaseOptions {
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyD_xkJ1zHdM9NpIUkz9TivPQF1kO1EgOk4',
     appId: '1:789024692194:android:5ab126c561cfa68b2c0bbb',
+    messagingSenderId: '789024692194',
+    projectId: 'fast-companion',
+    databaseURL: 'https://fast-companion-default-rtdb.asia-southeast1.firebasedatabase.app',
+    storageBucket: 'fast-companion.firebasestorage.app',
+  );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyBupgrpPKt3t7lS3AiTa5ubQL9qaKGTgKw',
+    appId: '1:789024692194:ios:a44dd8c145d6b25a2c0bbb',
     messagingSenderId: '789024692194',
     projectId: 'fast-companion',
     databaseURL: 'https://fast-companion-default-rtdb.asia-southeast1.firebasedatabase.app',
