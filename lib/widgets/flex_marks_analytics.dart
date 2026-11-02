@@ -68,22 +68,6 @@ class FlexMarksAnalyticsWidget extends StatelessWidget {
         children: [
           Row(
             children: [
-              // Course code in a small orange label
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.cardOrange,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  marks.courseCode,
-                  style: AppTextStyles.bodySmall.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   marks.courseName,

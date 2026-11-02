@@ -331,13 +331,25 @@ class FlexMarksEnhancerService {
     }
   }
 
+  /// Match keys are compared without case or punctuation so that the marks
+  /// page's `CS241` and a transcript cell reading `CS-241` are the same course.
+  static String _normalizeCourseKey(String raw) =>
+      raw.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
   /// Compute the credits‑weighted semester GPA from cached marks and credits.
   ///
   /// Returns null if no courses with both grades and credits exist.
   Future<double?> computeSemesterGpa() async {
     final courses = await loadCachedMarks();
-    if (courses.isEmpty) return null;
+    if (courses.isEmpty) {
+      debugPrint('Fast Companion: GPA null — no cached marks');
+      return null;
+    }
     final credits = await loadFlexCredits();
+    final normalizedCredits = <String, int>{
+      for (final entry in credits.entries)
+        _normalizeCourseKey(entry.key): entry.value,
+    };
 
     double totalPoints = 0.0;
     double totalCredits = 0.0;
@@ -345,13 +357,22 @@ class FlexMarksEnhancerService {
     for (final course in courses) {
       final gradePoint = course.gradePoint; // 0.0–4.0 or null
       if (gradePoint == null) continue;
-      final credit = credits[course.courseCode] ?? 0;
+      final credit = normalizedCredits[_normalizeCourseKey(course.courseCode)] ??
+          0;
       if (credit <= 0) continue;
       totalPoints += gradePoint * credit;
       totalCredits += credit;
     }
 
-    if (totalCredits <= 0) return null;
+    if (totalCredits <= 0) {
+      debugPrint(
+        'Fast Companion: GPA null — ${courses.length} marks, '
+        '${credits.length} credit entries, no course matched. '
+        'marks keys: ${courses.take(3).map((c) => c.courseCode).toList()}, '
+        'credit keys: ${credits.keys.take(3).toList()}',
+      );
+      return null;
+    }
     return totalPoints / totalCredits;
   }
 

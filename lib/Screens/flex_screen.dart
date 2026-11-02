@@ -368,7 +368,19 @@ class _FlexScreenState extends State<FlexScreen> {
                               }
                               final gpa = snapshot.data;
                               if (gpa == null) {
-                                return Text('-', style: AppTextStyles.body.copyWith(color: Colors.white.withValues(alpha: 0.5)));
+                                // Credits are cached the first time the
+                                // portal's Transcript page is opened — say so
+                                // instead of leaving a bare dash.
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text('-', style: AppTextStyles.body.copyWith(color: Colors.white.withValues(alpha: 0.5))),
+                                    Text(
+                                      'Open Flex → Transcript once to unlock',
+                                      style: AppTextStyles.bodySmall.copyWith(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+                                    ),
+                                  ],
+                                );
                               }
                               return Text(
                                 gpa.toStringAsFixed(2),
