@@ -136,29 +136,68 @@ class FlexMarksEnhancerService {
         return courses;
       }
 
+      // Walks every table on the page: the transcript renders one table
+      // per semester, so no single id can be assumed. A row qualifies when
+      // one cell contains a course-code pattern and a later cell holds a
+      // plain integer 1-6 — the plain-integer rule is what keeps a 3.7
+      // grade point from being read as 3 credits.
       function scrapeCreditsPage() {
         var credits = {};
-        document.querySelectorAll('#transcript-table tbody tr').forEach(function (row) {
-          var codeCell = row.querySelector('td');
-          var nameCell = row.querySelectorAll('td')[1];
-          var creditCell = row.querySelectorAll('td')[2];
-          if (!codeCell || !nameCell || !creditCell) return;
-          var code = codeCell.textContent.trim();
-          var creditsStr = creditCell.textContent.trim();
-          var creditsNum = parseInt(creditsStr, 10);
-          if (!isNaN(creditsNum)) credits[code] = creditsNum;
+        var rowsAccepted = 0;
+        document.querySelectorAll('table tbody tr').forEach(function (row) {
+          var cells = row.querySelectorAll('td');
+          if (cells.length < 3) return;
+
+          var code = null;
+          var codeIndex = -1;
+          for (var i = 0; i < cells.length; i++) {
+            var found = (cells[i].textContent || '').trim().match(/[A-Za-z]{2,5}\s*-?\d{3,5}/);
+            if (found) {
+              code = found[0];
+              codeIndex = i;
+              break;
+            }
+          }
+          if (!code) return;
+
+          for (var j = codeIndex + 1; j < cells.length; j++) {
+            var text = (cells[j].textContent || '').trim();
+            if (!/^\d{1,2}$/.test(text)) continue;
+            var value = parseInt(text, 10);
+            if (value >= 1 && value <= 6) {
+              credits[code] = value;
+              rowsAccepted++;
+              return;
+            }
+          }
         });
-        return credits;
+        return { credits: credits, rows: rowsAccepted };
       }
 
       function enhanceMarksPage() {
         try {
           // Transcript page: scrape the course → credit mapping only.
-          if (window.location.pathname.toLowerCase().includes('/transcript')) {
-            var creditsData = scrapeCreditsPage();
-            if (Object.keys(creditsData).length > 0 && window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
-              window.flutter_inappwebview.callHandler('onFlexCreditsParsed', {
-                credits: creditsData,
+          // 'transcript' without the slash, because the real route is not
+          // guaranteed to sit directly under the origin (ViewTranscript,
+          // MyTranscript, … would all miss a '/transcript' check).
+          if (window.location.pathname.toLowerCase().includes('transcript')) {
+            var result = scrapeCreditsPage();
+            var creditsData = result.credits || {};
+            if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
+              if (Object.keys(creditsData).length > 0) {
+                window.flutter_inappwebview.callHandler('onFlexCreditsParsed', {
+                  credits: creditsData,
+                });
+              }
+              // Reported even when nothing matched: an empty parse is
+              // invisible otherwise, and the counts say whether the page
+              // shape or the values were the reason.
+              window.flutter_inappwebview.callHandler('onFlexDebug', {
+                source: 'transcript',
+                pathname: window.location.pathname,
+                tables: document.querySelectorAll('table').length,
+                rows: result.rows || 0,
+                codes: Object.keys(creditsData).slice(0, 5),
               });
             }
             return;
@@ -490,6 +529,17 @@ class FlexMarksEnhancerService {
           } catch (e) {
             debugPrint('Fast Companion: Error processing credits data: $e');
           }
+        },
+      );
+
+      controller.addJavaScriptHandler(
+        handlerName: 'onFlexDebug',
+        callback: (args) async {
+          // What the transcript scrape saw — pathname, table count, rows
+          // accepted — so a GPA that stays locked can be diagnosed from
+          // logcat instead of guessed at.
+          final payload = args.isNotEmpty ? args.first : null;
+          debugPrint('Flex debug: $payload');
         },
       );
 

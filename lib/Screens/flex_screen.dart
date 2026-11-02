@@ -323,6 +323,11 @@ class _FlexScreenState extends State<FlexScreen> {
   Future<void> _showAnalytics() async {
     final List<FlexCourseMarks> courses =
         await FlexMarksEnhancerService.instance.loadCachedMarks();
+    // Resolved before the sheet opens: a FutureBuilder inside the sheet
+    // re-ran the computation on every rebuild and flashed its waiting
+    // state before settling.
+    final double? gpa =
+        await FlexMarksEnhancerService.instance.computeSemesterGpa();
     if (!mounted) return;
 
     await showModalBottomSheet<void>(
@@ -360,34 +365,21 @@ class _FlexScreenState extends State<FlexScreen> {
                             'Semester GPA',
                             style: AppTextStyles.body.copyWith(color: Colors.white.withValues(alpha: 0.8)),
                           ),
-                          FutureBuilder<double?>(
-                            future: FlexMarksEnhancerService.instance.computeSemesterGpa(),
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState == ConnectionState.waiting) {
-                                return const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2));
-                              }
-                              final gpa = snapshot.data;
-                              if (gpa == null) {
-                                // Credits are cached the first time the
-                                // portal's Transcript page is opened — say so
-                                // instead of leaving a bare dash.
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text('-', style: AppTextStyles.body.copyWith(color: Colors.white.withValues(alpha: 0.5))),
-                                    Text(
-                                      'Open Flex → Transcript once to unlock',
-                                      style: AppTextStyles.bodySmall.copyWith(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
-                                    ),
-                                  ],
-                                );
-                              }
-                              return Text(
-                                gpa.toStringAsFixed(2),
-                                style: AppTextStyles.title.copyWith(color: AppColors.cardOrange),
-                              );
-                            },
-                          ),
+                          gpa == null
+                              ? Text(
+                                  'Open Flex → Transcript once to unlock',
+                                  style: AppTextStyles.bodySmall.copyWith(
+                                    color: Colors.white.withValues(alpha: 0.5),
+                                    fontSize: 11,
+                                  ),
+                                )
+                              : Text(
+                                  gpa.toStringAsFixed(2),
+                                  style: AppTextStyles.body.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.cardOrange,
+                                  ),
+                                ),
                         ],
                       ),
                     ),
