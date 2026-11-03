@@ -1,8 +1,27 @@
 # Session Notes
 
-## Task (CURRENT) — Security pass cleanup: revert safe changes, keep only real fixes
+## Task (CURRENT) — Revert "Added web compatibility"; web/PWA abandoned
 
-**Status: RESUME HERE — follow "Exact resume steps" in order.**
+**Status: DONE (verified). Next: user builds & installs; iOS native app is the iOS path.**
+
+### Background & decision
+User first tried running on Chrome (`flutter run -d chrome`), hit `MissingPluginException` (home_widget `setAppGroupId`) and `flutter_inappwebview` unavailable errors. Root cause: plugins have no web impl + `firebase_options.dart` throws on `kIsWeb`. User then decided against a PWA: **"because the web app does not give full feature, I will try ios application and now we don't need the web configurations"** → remove web config, restore pre-web build. iOS users get the native app (`e4b1cbc Added ios compatibility` + `ios/NotesWidget`, untouched).
+
+### What was done
+- `git revert --no-edit 346a1d8` → commit `029dba1 "Revert \"Added web compatibility\""`.
+- Reverted commit removed: `web/` (6 files), `.firebaserc`, `.firebase/` cache, `test/widget_test.dart` (broken counter smoke test), and restored `firebase.json` (original FlutterFire android/ios config — it had been **replaced** by a hosting block), `.metadata`, `pubspec.lock`.
+- Verified: `git diff 346a1d8^ HEAD` empty (tree identical to pre-web state); `flutter pub get` OK; `flutter analyze` = No issues; `flutter test` = 179/179 passing.
+
+### Notes
+- No `lib/` code was ever changed for web — app logic untouched by the revert.
+- `flutter run -d chrome` will never work for this app (by design now); use Android/iOS.
+- `firebase.json` hosting block gone — no Firebase Hosting setup remains.
+
+---
+
+## Task (PREVIOUS) — Security pass cleanup: revert safe changes, keep only real fixes
+
+**Status: COMPLETED.**
 
 ### Background
 The "Pre-deployment security checklist" session (ID `ses_e630c6152ffe0RnrCSNKCPuSX3`) crashed: it hit max context, then OpenCode compaction failed 3× (`Compaction fallback failed: ... 'delete event.tools.compress'`). It left 4 analyzer errors, never ran tests, and broke Firebase with placeholder API keys. Its full history can be read anytime with:
