@@ -1,6 +1,12 @@
 # Session Notes
 
-## Task (CURRENT) — Revert "Added web compatibility"; web/PWA abandoned
+## Task (CURRENT) — Rewrite README.md
+
+**Status: DONE.** Replaced the default Flutter template in `README.md` with full project documentation: features (notes/timetable/rooms/FLEX portal/widgets/reminders/auth), project structure, services table, setup/run/build commands, testing (179 tests), repo docs (PROJECT_MAP/SESSION_NOTES/AGENTS), and conventions (secrets policy, allowBackup, Firebase config rules). Docs-only change — no code touched, no analyze/test needed. Next: user reviews README; otherwise resume prior backlog.
+
+---
+
+## Task (PREVIOUS) — Revert "Added web compatibility"; web/PWA abandoned
 
 **Status: DONE (verified). Next: user builds & installs; iOS native app is the iOS path.**
 
