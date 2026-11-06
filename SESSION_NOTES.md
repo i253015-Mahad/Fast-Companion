@@ -1,6 +1,38 @@
 # Session Notes
 
-## Task (CURRENT) — Tutorial fixes round 2 (SnackBar FAB tracker, skip suppression, step-swap index reset)
+## Task (CURRENT) — First-login Welcome snackbar color + reminder toggle shows OS permission truth
+
+**Status: DONE (verified). Next: user builds & installs the APK.**
+
+**Two user-reported bugs:**
+
+1. **First-login "Welcome" snackbar had the default (grey) background.** The first sign-in path (Sync Notes card → "Sign in with Google") showed `SnackBar(content: Text("Welcome: …"))` with no `backgroundColor`, while later logins ("Add another account" in the switcher) set `AppColors.cardOrange`. No global snackBarTheme exists, so the first path just never got the color.
+2. **Reminder toggle lied after the user denied the notification prompt.** The tile read only the in-app pref (`reminders_enabled`, default true) and never checked the OS permission → toggle showed ON while Android was dropping every notification. Android shows the system prompt at most twice per install (startup `requestPermissionOnce` + first toggle-on); after that it silently auto-denies, so the old code did nothing and left the switch ON with no explanation.
+
+**Fixes:**
+- **`lib/Screens/home_screen.dart` (done):**
+  - Welcome snackbar gains `backgroundColor: AppColors.cardOrange` (matches "Switched to" exactly).
+  - `_ReminderToggleTileState` rewritten: adds `WidgetsBindingObserver` (`didChangeAppLifecycleState(resumed)` → `_load()`, observer added/removed in initState/dispose). State split: `_pref` (in-app intent, kept even while blocked so a settings grant restores ON) + `_allowed` (real OS permission) + `bool get _enabled => _pref && _allowed` (what the switch shows).
+  - `_load()` reads pref + `notificationsEnabled()` + exact-alarm status. `_setEnabled(true)` requests permission, then **re-reads** `notificationsEnabled()` (Android may silently auto-deny) and sets `_allowed` from reality; persists via existing `setEnabled(value)`.
+  - Subtitle priority: `!_allowed` → tappable "Notifications blocked — tap to open system settings" (`openNotificationSettings()`), else exact-alarm hint, else normal text — same GestureDetector pattern as the exact-alarm line.
+  - **Follow-up 1 (user feedback):** tapping the toggle itself while blocked did nothing (prompt budget spent → request was a silent no-op) → toggle-on now opens system settings when still `!allowed` after the request.
+  - **Follow-up 2 (user feedback):** that auto-open wrongly fired even when the user had just DENIED the second system prompt — settings must only open on a later toggle. Fix is a **timing heuristic** in `_setEnabled`: `Stopwatch` around `requestNotificationPermission()`; the plugin's Android future completes only from `onRequestPermissionsResult` (verified in source, line 2058–2066), i.e. after a real dialog is answered (always > `_silentRequestCeilingMs = 400`), while a spent-budget silent re-denial returns in milliseconds. So settings auto-open only when `!allowed && elapsed < 400ms`. A pref-flag approach was tried first (helpers added, then removed — grep confirms zero references). Plugin source: `flutter_local_notifications-22.3.3`.
+- **`lib/services/reminder_notification_service.dart` (done):** two new helpers — `notificationsEnabled()` (Android: `areNotificationsEnabled()`; iOS: `checkPermissions().isEnabled || isProvisionalEnabled`; null → true, i.e. platforms without the concept behave as before) and `openNotificationSettings()` (wraps `_plugin.openAppNotificationSettings()` — available in installed flutter_local_notifications 22.3.x on both platforms).
+
+**Behavior preserved (user-confirmed good):** when permission is granted, toggle off→on does NOT re-prompt (system has nothing to ask) and reminders schedule/show normally — unchanged.
+
+**Verification:**
+- ✅ `flutter analyze` — No issues found.
+- ✅ `flutter test` — **185/185 passing**.
+- `dart format` NOT run (project-wide non-compliance, per AGENTS.md).
+
+**Files:** `lib/Screens/home_screen.dart`, `lib/services/reminder_notification_service.dart`, `SESSION_NOTES.md`. No pubspec changes.
+
+**Manual test cues:** fresh install → deny prompt → toggle must show OFF + blocked subtitle → tap subtitle → system settings → grant → return to app → toggle flips ON. First-login Welcome snackbar should be orange like later "Switched to" ones.
+
+---
+
+## Task (PREVIOUS) — Tutorial fixes round 2 (SnackBar FAB tracker, skip suppression, step-swap index reset)
 
 **Status: DONE (verified). Next: user builds & installs the APK.**
 

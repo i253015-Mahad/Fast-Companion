@@ -1477,6 +1477,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                           context,
                                         ).showSnackBar(
                                           SnackBar(
+                                            backgroundColor:
+                                                AppColors.cardOrange,
                                             content: Text(
                                               "Welcome: ${session.email}",
                                             ),
@@ -1892,23 +1894,60 @@ class _ReminderToggleTile extends StatefulWidget {
   State<_ReminderToggleTile> createState() => _ReminderToggleTileState();
 }
 
-class _ReminderToggleTileState extends State<_ReminderToggleTile> {
-  bool _enabled = true;
+class _ReminderToggleTileState extends State<_ReminderToggleTile>
+    with WidgetsBindingObserver {
+  /// Ceiling for a permission request that showed NO dialog: that path is
+  /// a plain method-channel round trip (typically well under 100ms). A
+  /// real system prompt can only be answered after its window animation
+  /// (~250ms) plus a human tap, so it always takes longer than this —
+  /// which is how we tell "user just denied a prompt" apart from
+  /// "OS silently re-denied because the prompt budget is spent".
+  static const int _silentRequestCeilingMs = 400;
+
+  /// The in-app pref — the user's intent. Kept even while the OS
+  /// permission is denied, so granting it in system settings can bring
+  /// the switch back to on without another tap.
+  bool _pref = true;
+
+  /// The actual OS notification permission. The switch must never claim
+  /// "on" while the system is dropping every notification we post.
+  bool _allowed = true;
+
   bool _exactAvailable = true;
   bool _loaded = false;
+
+  /// What the switch shows: reminders only run when the pref wants them
+  /// AND the OS allows posting them.
+  bool get _enabled => _pref && _allowed;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Returning from system settings can flip the permission behind the
+  /// tile's back — re-read it instead of showing a stale switch.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _loaded) _load();
+  }
+
   Future<void> _load() async {
-    final enabled = await ReminderNotificationService.isEnabled();
+    final pref = await ReminderNotificationService.isEnabled();
+    final allowed = await ReminderNotificationService.notificationsEnabled();
     final exact = await ReminderNotificationService.canScheduleExact();
     if (!mounted) return;
     setState(() {
-      _enabled = enabled;
+      _pref = pref;
+      _allowed = allowed;
       _exactAvailable = exact;
       _loaded = true;
     });
@@ -1916,14 +1955,34 @@ class _ReminderToggleTileState extends State<_ReminderToggleTile> {
 
   Future<void> _setEnabled(bool value) async {
     // Flip immediately — rescheduling a whole account can take a moment.
-    setState(() => _enabled = value);
+    setState(() => _pref = value);
 
     if (value) {
-      // (Re-)ask for the Android 13+ notification permission; if it was
-      // already denied, Android just re-denies and the user has to allow
-      // it in system settings.
+      // (Re-)ask for the Android 13+ / iOS notification permission.
+      // Time the call: while the OS can still show a prompt the future
+      // blocks until the user actually answers it; once the per-install
+      // prompt budget is spent it returns in milliseconds with a silent
+      // re-denial — no dialog ever appears.
+      final stopwatch = Stopwatch()..start();
       await ReminderNotificationService.requestNotificationPermission();
+      stopwatch.stop();
+
+      // Asking isn't enough: once Android spends its per-install prompt
+      // budget it re-denies silently, so re-read what the OS actually
+      // granted — the switch shows reality, not the wish.
+      final allowed = await ReminderNotificationService.notificationsEnabled();
       await ReminderNotificationService.setEnabled(true);
+      if (!mounted) return;
+      setState(() => _allowed = allowed);
+
+      // Open settings only when nothing was shown: a prompt the user just
+      // answered "no" must not be followed by an automatic jump into
+      // settings (their next toggle does that), while a silent re-denial
+      // leaves settings as the only way forward, so go straight there.
+      if (!allowed &&
+          stopwatch.elapsedMilliseconds < _silentRequestCeilingMs) {
+        await ReminderNotificationService.openNotificationSettings();
+      }
     } else {
       await ReminderNotificationService.setEnabled(false);
     }
@@ -1959,20 +2018,29 @@ class _ReminderToggleTileState extends State<_ReminderToggleTile> {
         "Task reminders",
         style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
       ),
-      subtitle: (_enabled && !_exactAvailable)
+      subtitle: !_allowed
           ? GestureDetector(
-              onTap: () => ReminderNotificationService.openExactAlarmSettings(),
+              onTap: () => ReminderNotificationService.openNotificationSettings(),
               child: const Text(
-                "Exact timing off — tap to enable in system settings",
+                "Notifications blocked — tap to open system settings",
                 style: TextStyle(color: AppColors.cardOrange, fontSize: 11),
               ),
             )
-          : Text(
-              _enabled
-                  ? "Alerts 3d / 1d / 2h / 1h / 30m / 10m / 5m before deadlines"
-                  : "Reminders are turned off",
-              style: const TextStyle(color: Colors.white38, fontSize: 11),
-            ),
+          : (_enabled && !_exactAvailable)
+              ? GestureDetector(
+                  onTap: () =>
+                      ReminderNotificationService.openExactAlarmSettings(),
+                  child: const Text(
+                    "Exact timing off — tap to enable in system settings",
+                    style: TextStyle(color: AppColors.cardOrange, fontSize: 11),
+                  ),
+                )
+              : Text(
+                  _enabled
+                      ? "Alerts 3d / 1d / 2h / 1h / 30m / 10m / 5m before deadlines"
+                      : "Reminders are turned off",
+                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                ),
       onChanged: _setEnabled,
     );
   }

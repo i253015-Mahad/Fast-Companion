@@ -184,6 +184,28 @@ class ReminderNotificationService {
     await _ios?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
+  /// Whether the OS currently lets this app post notifications — the
+  /// ground truth the reminders toggle must reflect (the in-app pref can
+  /// say "on" while the system permission is denied). Where the platform
+  /// has no such concept — or the check fails — we assume enabled, which
+  /// is exactly what the toggle always assumed before.
+  static Future<bool> notificationsEnabled() async {
+    final bool? androidEnabled = await _android?.areNotificationsEnabled();
+    if (androidEnabled != null) return androidEnabled;
+    final options = await _ios?.checkPermissions();
+    if (options != null) {
+      return options.isEnabled || options.isProvisionalEnabled;
+    }
+    return true;
+  }
+
+  /// Opens the system screen for this app's notification permission. Once
+  /// Android has spent its per-install prompt budget it re-denies silently
+  /// forever, so this is the only way back for a blocked user.
+  static Future<void> openNotificationSettings() async {
+    await _plugin.openAppNotificationSettings();
+  }
+
   /// Whether reminders can fire at the exact minute. On Android 14+ this is
   /// denied by default; without it we fall back to inexact alarms (which
   /// Android may delay a little while the device is idle).
