@@ -1,6 +1,41 @@
 # Session Notes
 
-## Task (CURRENT) — First-login Welcome snackbar color + reminder toggle shows OS permission truth
+## Task (CURRENT) — Analytics sheet: "Abs Diff" rename, Class Avg row, single standing bar (now percentage-based)
+
+**Status: DONE (verified). Next: user builds & installs the APK.**
+
+**User's requests (verbatim):** *"in the first row (your score stays as it is, class average stays as it is, abs diff claculation stays as is, just change the name from "Diff from Avg" to "Abs Diff") in the box (Attained absolutes as is, after attainded abs, show class avg abs, and finally the remaining abs as is) and finally the bars (make it a single bar of 100 abs with a verticle line on it showing avg abs, and another showing where we stand)"*, then a correction: *"you got it all wrong, you have changed the attained abs which I told you not to change and because of that the class avg abs is also wrong. Put those back as they were. And in the bar write 0 on the left and 100 on the right below the bar to show the range. I said that in your calculation of remaining abs, you need to do 100 - alloted abs and that was it"*, then: *"Everything is perfect now!! Just one change which is in the final bar. instead of showing abs, show the percentage, the rest remains exactly the same"* — when asked which percentage, the user chose **"Score on graded work (80.0% / 70.0%)"**, not course completion.
+
+**IMPORTANT — a normalisation was added and then fully reverted.** An earlier round applied a `100/Σweightage` factor to the absolutes; the user rejected it. The model is back to its **original raw getters** — do not reintroduce scaling.
+
+**Files changed:**
+- `lib/models/flex_marks_model.dart` — reverted to raw sums; only rule is `remainingWeightage = 100.0 - evaluatedWeightage` (`< 0` guard kept). `_rawTotalWeightage` / `_normalisationFactor` deleted. `totalWeightage` = Σ item weightage (always 100 for real FAST courses). `attainedAbsolutes` / `classAvgAbsolutes` / `evaluatedWeightage` are plain folds with **no factor**. `percentage` / `classAvgPercentage` / `diffFromAvg` / `letterGrade` / `gradePoint` untouched.
+- `lib/widgets/flex_marks_analytics.dart` — the UI changes below + overflow hardening.
+- `test/flex_marks_analytics_test.dart` — **new**, 6 tests, retargeted to raw semantics.
+
+**Widget (`flex_marks_analytics.dart`):**
+1. Tile label `'Diff from Avg'` → **`'Abs Diff'`** (value/sign/colors unchanged).
+2. Grey box = three rows via `_boxRow(label, value)`, in order: `Attained Absolutes: 32.0 / 100.0 (80.0%)` → `Class Avg Absolutes: 28.0 / 100.0 (70.0%)` (new) → `Remaining Absolutes: 60.0`.
+3. Both progress bars + `_buildProgressBar` **deleted**; `_buildStandingBar(percentage, classAvgPercentage)` — **percentage, not absolutes** (call site line ~160; both locals already in `build()`): header **`Standing (0–100%)`**, grey 6px track, orange fill to your score (80% of track), dark (`textPrimary`) 3px line at the class avg score (70%), orange 3px line at your position **drawn last** (wins on overlap), lines span 20px and overhang the track, then a `SpaceBetween` row of **`0%` (left end) and `100%` (right end)**, then legend **`You 80.0%  ·  Avg 70.0%`** — the same figures as the two tiles. `LayoutBuilder` + `Stack` + `Positioned`; fractions clamped `0..1`, left clamped `[0, w-3]`. Params renamed `yourScore`/`classAvgScore`. **Untouched:** box rows, three tiles, `Abs Diff`, grade badge, Semester GPA, `attained`/`classAvgAbsolutes`/`total`/`remaining` locals.
+
+**Overflow fix (keep):** grey-box rows overflowed because `RenderFlex` lays **non-flexible** children out **unbounded** — a plain `Text` (or an `FittedBox` around one) takes natural width and blows past the Row, and a `Flexible` label alone can't help when the *value* is the wide part. Fix in `_boxRow`: **both** children `Flexible`; label ellipsizes, value wrapped in `FittedBox(fit: scaleDown)`. Layout only — moves no numbers.
+
+**Tests (6):** model — raw-100 figures exact; raw-95 reported **raw** (attained 23, evaluated 40, classAvg 25, total 95) with `remaining == 100 - evaluated == 60`; percentages/diff/grade from raw sums (`diffFromAvg == -2.0`; grade reads `D+` because 57.5 sits on the D+/C- boundary and `23/40*100` lands a hair under 57.5 in binary — the model's own arithmetic, deliberately unchanged). Widget (DS BD3 Pro 1080x2412@3.0): `Abs Diff`+`+4.0`, three box rows **in order** with exact strings, bar header `Standing (0–100%)`, **`0%` and `100%` each present with `0%.left == track.left` and `100%.right == track.right`**, legend figures `'80.0%'`/`'70.0%'` asserted as **`findsNWidgets(2)`** (tile + legend each — exact `'32.0'`/`'28.0'` strings no longer exist anywhere on the card, so those finds were dropped), the 4 `Positioned` children measured against the track's width (`fill == 80%`, avg at `70% - 1.5`, you at `80% - 1.5`, colors `textPrimary`/`cardOrange`, you-line last), ungraded course keeps both markers at the left edge (0%).
+
+**Verification:**
+- ✅ `dart analyze lib test` — No issues found (`flutter analyze` timed out at 180s earlier; use `dart analyze`).
+- ✅ `flutter test` — **191/191 passing**.
+- `dart format` NOT run (project-wide non-compliance, per AGENTS.md).
+
+**Files:** `lib/models/flex_marks_model.dart`, `lib/widgets/flex_marks_analytics.dart`, `test/flex_marks_analytics_test.dart`, `SESSION_NOTES.md`. No pubspec/Firebase changes.
+
+**Known issue deliberately deferred (user: "Leave it for later"):** `FlexCourseMarks.letterGrade` never checks whether anything is graded → a course with **zero graded items** yields `percentage 0` → `'F'` → `gradePoint 0.0`, and `computeSemesterGpa` only skips `null` → such a course drags the Semester GPA header down. Fix would be `letterGrade` returning null when `evaluatedWeightage == 0`. Not addressed.
+
+**Manual test cues:** Flex → Marks → chart icon → per course: `Abs Diff` tile; box rows Attained / Class Avg / Remaining (raw absolutes); one bar on a **0%–100%** scale with **`0%` under its left end, `100%` under its right**, fill = Your Score %, dark line = Class Avg %, legend `You 80.0% · Avg 70.0%`; `Semester GPA` unchanged.
+
+---
+
+## Task (PREVIOUS) — First-login Welcome snackbar color + reminder toggle shows OS permission truth
 
 **Status: DONE (verified). Next: user builds & installs the APK.**
 

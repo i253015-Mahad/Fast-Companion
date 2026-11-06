@@ -19,6 +19,7 @@ class FlexMarksAnalyticsWidget extends StatelessWidget {
     final classAvgPercentage = marks.classAvgPercentage;
     final diff = marks.diffFromAvg;
     final attained = marks.attainedAbsolutes;
+    final classAvgAbsolutes = marks.classAvgAbsolutes;
     final total = marks.totalWeightage;
     // Still earnable this semester: the 100-point course scale minus
     // whatever has already been graded — upcoming and unannounced work
@@ -118,7 +119,7 @@ class FlexMarksAnalyticsWidget extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: _buildMetricCard(
-                  'Diff from Avg',
+                  'Abs Diff',
                   diff >= 0
                       ? '+${diff.toStringAsFixed(1)}'
                       : diff.toStringAsFixed(1),
@@ -138,64 +139,72 @@ class FlexMarksAnalyticsWidget extends StatelessWidget {
             ),
             child: Column(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Attained Absolutes:',
-                      style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    Text(
-                      '${attained.toStringAsFixed(1)} / ${total.toStringAsFixed(1)} (${percentage.toStringAsFixed(1)}%)',
-                      style: AppTextStyles.body.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ],
+                _boxRow(
+                  'Attained Absolutes:',
+                  '${attained.toStringAsFixed(1)} / ${total.toStringAsFixed(1)} (${percentage.toStringAsFixed(1)}%)',
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Remaining Absolutes:',
-                      style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    Text(
-                      remaining.toStringAsFixed(1),
-                      style: AppTextStyles.body.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ],
+                _boxRow(
+                  'Class Avg Absolutes:',
+                  '${classAvgAbsolutes.toStringAsFixed(1)} / ${total.toStringAsFixed(1)} (${classAvgPercentage.toStringAsFixed(1)}%)',
+                ),
+                const SizedBox(height: 8),
+                _boxRow(
+                  'Remaining Absolutes:',
+                  remaining.toStringAsFixed(1),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _buildProgressBar('Your Progress', percentage / 100, AppColors.cardOrange),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildProgressBar(
-                  'Class Gap',
-                  ((percentage - classAvgPercentage).clamp(-100, 100) + 100) / 200,
-                  diff >= 0 ? AppColors.success : AppColors.error,
-                ),
-              ),
-            ],
-          ),
+          _buildStandingBar(percentage, classAvgPercentage),
         ],
       ),
+    );
+  }
+
+  /// One row of the grey box: label on the left, value on the right.
+  ///
+  /// Both children are flexible, and that is the whole defence. A Flex lays
+  /// its non-flexible children out unbounded, so a plain Text (or an
+  /// [FittedBox] around one) takes its natural width and pushes the row past
+  /// the card — which is what these rows did. Flexible children, by
+  /// contrast, are capped at their share of the row:
+  ///
+  ///  * the label yields first, by ellipsis, when space runs short;
+  ///  * the value never gives up digits — [BoxFit.scaleDown] shrinks it
+  ///    instead, so the numbers stay whole even when they are too wide.
+  ///
+  /// The slack is genuinely small: margin plus padding leaves these rows
+  /// little room on a 360dp screen, and a test's square-glyph font is wider
+  /// than the Roboto a phone uses.
+  Widget _boxRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Flexible(
+          child: Text(
+            label,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.bodySmall.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text(
+              value,
+              style: AppTextStyles.body.copyWith(
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -243,37 +252,139 @@ class FlexMarksAnalyticsWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildProgressBar(String label, double value, Color color) {
-    final displayValue = (value * 100).toInt();
+  /// Single 0–100% bar: orange fill up to the student's score on graded
+  /// work, a dark line at the class average, and a line at the student's
+  /// own position drawn last so it stays visible when the two coincide.
+  ///
+  /// Both inputs are percentages (the same figures the two tiles above
+  /// show), not absolutes.
+  Widget _buildStandingBar(double yourScore, double classAvgScore) {
+    const double barHeight = 20;
+    const double trackHeight = 6;
+    const double lineWidth = 3;
+
+    final double yourFraction = (yourScore / 100).clamp(0.0, 1.0);
+    final double classAvgFraction = (classAvgScore / 100).clamp(0.0, 1.0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(
+          'Standing (0–100%)',
+          style: AppTextStyles.bodySmall.copyWith(
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final double width = constraints.maxWidth;
+            final double trackTop = (barHeight - trackHeight) / 2;
+
+            double lineLeft(double fraction) =>
+                (width * fraction - lineWidth / 2).clamp(0.0, width - lineWidth);
+
+            return SizedBox(
+              height: barHeight,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // Track
+                  Positioned(
+                    left: 0,
+                    top: trackTop,
+                    width: width,
+                    height: trackHeight,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(trackHeight / 2),
+                      ),
+                    ),
+                  ),
+                  // Fill — the score on graded work so far
+                  Positioned(
+                    left: 0,
+                    top: trackTop,
+                    width: width * yourFraction,
+                    height: trackHeight,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.cardOrange,
+                        borderRadius: BorderRadius.circular(trackHeight / 2),
+                      ),
+                    ),
+                  ),
+                  // Class average marker
+                  Positioned(
+                    left: lineLeft(classAvgFraction),
+                    top: 0,
+                    width: lineWidth,
+                    height: barHeight,
+                    child: const ColoredBox(color: AppColors.textPrimary),
+                  ),
+                  // Student's own position, drawn last to win any overlap
+                  Positioned(
+                    left: lineLeft(yourFraction),
+                    top: 0,
+                    width: lineWidth,
+                    height: barHeight,
+                    child: const ColoredBox(color: AppColors.cardOrange),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 4),
+        // Range of the bar: 0% at its left end, 100% at its right end.
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              label,
+              '0%',
               style: AppTextStyles.bodySmall.copyWith(
                 color: AppColors.textSecondary,
               ),
             ),
             Text(
-              '$displayValue%',
+              '100%',
               style: AppTextStyles.bodySmall.copyWith(
-                color: color,
-                fontWeight: FontWeight.bold,
+                color: AppColors.textSecondary,
               ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        LinearProgressIndicator(
-          value: value,
-          backgroundColor: Colors.grey.shade200,
-          valueColor: AlwaysStoppedAnimation<Color>(color),
-          minHeight: 6,
-          borderRadius: BorderRadius.circular(3),
+        Row(
+          children: [
+            Text(
+              'You ',
+              style: AppTextStyles.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+            Text(
+              '${yourScore.toStringAsFixed(1)}%',
+              style: AppTextStyles.bodySmall.copyWith(
+                color: AppColors.cardOrange,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              '  ·  Avg ',
+              style: AppTextStyles.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+            Text(
+              '${classAvgScore.toStringAsFixed(1)}%',
+              style: AppTextStyles.bodySmall.copyWith(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
       ],
     );

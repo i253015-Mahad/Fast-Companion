@@ -109,7 +109,8 @@ class FlexCourseMarks {
   /// Relative delta compared to class average (+ / - absolutes).
   double get diffFromAvg => attainedAbsolutes - classAvgAbsolutes;
 
-  /// Remaining weightage yet to be evaluated.
+  /// Points of the 100-point course scale not yet graded: 100 minus the
+  /// weightage allotted to work already graded.
   double get remainingWeightage {
     final rem = 100.0 - evaluatedWeightage;
     return rem < 0 ? 0.0 : rem;
