@@ -1,12 +1,15 @@
 // test/faculty_directory_test.dart
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:fast_companion/models/faculty_member.dart';
 import 'package:fast_companion/services/faculty_directory_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   final svc = FacultyDirectoryService.instance;
 
   // ---------------------------------------------------------------------
@@ -172,6 +175,354 @@ Dr. Hasan Mujtaba,,"Professor & Head, FSC ",hasan.mujtaba@nu.edu.pk,C-201 A
   });
 
   // ---------------------------------------------------------------------
+  // A campus-website department page, shaped like the four the site
+  // actually publishes: a spotlight above the cards, cards with a name,
+  // a title and a contact row, and one card nobody can email.
+  // ---------------------------------------------------------------------
+
+  const dcePage = '''
+<!DOCTYPE html>
+<html><body>
+<div class="head-spotlight">
+  <div class="faculty-info">
+    <h4>Dr. Muhammad Tariq</h4>
+    <p class="faculty-title">Head of Department</p>
+  </div>
+</div>
+<div class="col-lg-4" data-aos="fade-up">
+  <div class="faculty-card">
+    <div class="faculty-info">
+      <h4>Dr. Falak Khan</h4>
+      <p class="faculty-title">Professor, HoS (FSE) &amp; HoD (Computer Engineering)</p>
+      <div class="faculty-contact">
+        <a href="Tel:4111"><i class="bi bi-telephone"></i> 4000</a>
+        <a href="mailto:Falak.Khan@nu.edu.pk"><i class="bi bi-envelope"></i> Email</a>
+        <a href="../Profile.php?id=4848" class="profile-link">Profile</a>
+      </div>
+    </div>
+  </div>
+  <div class="faculty-card">
+    <div class="faculty-info">
+      <h4>Ms. Sadaf Noor</h4>
+      <p class="faculty-title">Lecturer</p>
+      <div class="faculty-contact">
+        <a href="Tel:123">123</a>
+        <a href="../Profile.php?id=4849">Profile</a>
+      </div>
+    </div>
+  </div>
+  <div class="faculty-card">
+    <div class="faculty-info">
+      <h4>Dr. Muhammad Tariq</h4>
+      <p class="faculty-title">Professor, HoS (FSE) &amp; HoD (Computer Engineering)</p>
+      <div class="faculty-contact">
+        <a href="Tel:356">4000</a>
+        <a href="mailto:tariq.khan@nu.edu.pk">Email</a>
+      </div>
+    </div>
+  </div>
+  <div class="faculty-card">
+    <div class="faculty-info">
+      <h4>Ms. Tooba</h4>
+      <p class="faculty-title">Lab Engineer</p>
+      <div class="faculty-contact">
+        <a href="Tel:529">529</a>
+        <a href="mailto:">Email</a>
+      </div>
+    </div>
+  </div>
+  <div class="faculty-card">
+    <div class="faculty-info">
+      <h4>Ms. Rabia Sultan</h4>
+      <p class="faculty-title">Lab Engineer</p>
+      <div class="faculty-contact">
+        <a href="mailto:">Email</a>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>
+''';
+
+  const dmsPage = '''
+<div class="faculty-card">
+  <div class="faculty-info">
+    <h4>Dr. Niaz Ahmed</h4>
+    <p class="faculty-title">Associate Professor</p>
+    <div class="faculty-contact">
+      <a href="Tel:254">254</a>
+      <a href="mailto:Niaz.Ahmed@isb.nu.edu.pk">Email</a>
+    </div>
+  </div>
+</div>
+''';
+
+  List<FacultyMember> dce() => svc.debugParseFacultyHtml(dcePage);
+
+  group('reading a faculty page', () {
+    test('reads name, designation and email off a card', () {
+      final falak = dce().singleWhere((m) => m.name == 'Dr. Falak Khan');
+      expect(
+        falak.designation,
+        'Professor, HoS (FSE) & HoD (Computer Engineering)',
+      );
+      expect(falak.email, 'Falak.Khan@nu.edu.pk');
+      expect(falak.school, 'School of Engineering');
+      expect(falak.department, 'Computer Engineering');
+    });
+
+    test('leaves the room empty for the overlay to fill', () {
+      // The page's only numbers are phone extensions — `4000`, and the
+      // placeholder `123` on the card nobody can email.
+      final falak = dce().singleWhere((m) => m.name == 'Dr. Falak Khan');
+      expect(falak.office, isEmpty);
+      expect(falak.status, OfficeStatus.unlisted);
+      expect(falak.hasOffice, isFalse);
+    });
+
+    test('skips the spotlight and every card without an address', () {
+      // The headline `Head of Department` block sits above the cards
+      // and has no email; Sadaf's card has a Tel: extension but no
+      // mailto link at all. Four remain: three addressed, two of those
+      // listed below with the address the site left blank.
+      expect(dce(), hasLength(4));
+      expect(dce().where((m) => m.name.contains('Sadaf')), isEmpty);
+      expect(dce().where((m) => m.designation == 'Head of Department'), isEmpty);
+    });
+
+    test('lists a person the site forgot to give an address', () {
+      // `href="mailto:"` is empty on DCE's real page. Hiding her for
+      // the university's typo would be worse than a card with no
+      // Email button — which the screen already draws for this.
+      final tooba = dce().singleWhere((m) => m.name == 'Ms. Tooba');
+      expect(tooba.email, isEmpty);
+      expect(tooba.designation, 'Lab Engineer');
+      expect(tooba.matches('tooba'), isTrue);
+      // And the second addressless card is a second person, not a
+      // duplicate caught by an empty dedupe key.
+      expect(dce().where((m) => m.name.contains('Rabia')), hasLength(1));
+    });
+
+    test('lists the head once, under their real designation', () {
+      final tariqs = [for (final m in dce()) if (m.name.contains('Tariq')) m];
+      expect(tariqs, hasLength(1));
+      expect(tariqs.single.designation, contains('& HoD'));
+      expect(tariqs.single.designation, isNot(contains('&amp;')));
+      expect(tariqs.single.isHoD, isTrue);
+      expect(tariqs.single.rank, FacultyRank.professor);
+    });
+
+    test('drops the spotlight line even when it carries an address', () {
+      const spotlight = '''
+<div class="faculty-card">
+  <div class="faculty-info">
+    <h4>Dr. Ayesha Razzaq</h4>
+    <p class="faculty-title">Head of Department</p>
+    <div class="faculty-contact"><a href="mailto:ayesha.razzaq@nu.edu.pk">Email</a></div>
+  </div>
+</div>
+<div class="faculty-card">
+  <div class="faculty-info">
+    <h4>Dr. Ayesha Razzaq</h4>
+    <p class="faculty-title">Assistant Professor &amp; HoD</p>
+    <div class="faculty-contact"><a href="mailto:ayesha.razzaq@nu.edu.pk">Email</a></div>
+  </div>
+</div>
+''';
+      final people = svc.debugParseFacultyHtml(spotlight);
+      expect(people, hasLength(1));
+      expect(people.single.designation, 'Assistant Professor & HoD');
+      expect(people.single.rank, FacultyRank.assistantProfessor);
+    });
+
+    test('files a management page under its own school', () {
+      final people = svc.debugParseFacultyHtml(
+        dmsPage,
+        school: 'School of Management',
+        department: 'Management Sciences',
+      );
+      final niaz = people.single;
+      expect(niaz.school, 'School of Management');
+      expect(niaz.department, 'Management Sciences');
+      expect(niaz.email, 'Niaz.Ahmed@isb.nu.edu.pk');
+      expect(niaz.rank, FacultyRank.associateProfessor);
+    });
+
+    test('refuses a page whose markup it cannot read', () {
+      // Contacts exist but no cards: an empty list here would wipe the
+      // school from the directory, so it throws instead and the cache
+      // covers the gap.
+      expect(
+        () => svc.debugParseFacultyHtml('<a href="mailto:x@nu.edu.pk">e</a>'),
+        throwsFormatException,
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // The overlay sheet: two columns, `Email | Office`, which the user
+  // fills in because the website publishes no rooms.
+  // ---------------------------------------------------------------------
+
+  const overlay = '''
+Email,Office
+Falak.Khan@nu.edu.pk,D-205
+niaz.ahmed@isb.nu.edu.pk,D-404
+roomless@example.com,
+''';
+
+  group('the office overlay', () {
+    test('reads the rows that name a room', () {
+      // The header has no address, and the row with no room beside the
+      // address is not a room — neither reaches the map.
+      expect(svc.debugParseOfficeCsv(overlay), {
+        'falak.khan@nu.edu.pk': 'D-205',
+        'niaz.ahmed@isb.nu.edu.pk': 'D-404',
+      });
+    });
+
+    test('gives a page person their room, whatever the case', () {
+      final people = svc.debugApplyOffices(dce(), svc.debugParseOfficeCsv(overlay));
+      final falak = people.singleWhere((m) => m.name == 'Dr. Falak Khan');
+      expect(falak.office, 'D-205');
+      expect(falak.status, OfficeStatus.listed);
+      expect(falak.block, 'D');
+    });
+
+    test('leaves anyone the overlay does not mention unlisted', () {
+      final people = svc.debugApplyOffices(dce(), svc.debugParseOfficeCsv(overlay));
+      final tariq = people.singleWhere((m) => m.name.contains('Tariq'));
+      expect(tariq.office, isEmpty);
+      expect(tariq.status, OfficeStatus.unlisted);
+    });
+
+    test('keeps the rooms the computing sheet already carries', () {
+      final fromSheet = svc.debugParseFacultyCsv(synthetic).members;
+      final people = svc.debugApplyOffices(fromSheet, svc.debugParseOfficeCsv(overlay));
+      expect(
+        people.singleWhere((m) => m.name.contains('Arshad Islam')).office,
+        'D-101 D',
+      );
+      expect(
+        people.singleWhere((m) => m.name.contains('Zia Ul Qayyum')).office,
+        isEmpty,
+      );
+    });
+
+    test('an empty overlay changes nothing at all', () {
+      final fromSheet = svc.debugParseFacultyCsv(synthetic).members;
+      expect(svc.debugApplyOffices(fromSheet, const {}), same(fromSheet));
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // load() itself, with the network swapped out. One unreachable source
+  // must cost its own school, not the directory — and a partial answer
+  // must never be cached, or the school would stay missing.
+  // ---------------------------------------------------------------------
+
+  group('loading when a source is down', () {
+    Future<String> okSheet(String id) async => synthetic;
+    Future<String> okSite(String url) async => dcePage;
+
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    test('a dead source is retried once, then skipped for the rest', () async {
+      var dceCalls = 0;
+      final dir = await svc.load(
+        forceRefresh: true,
+        fetchSheet: okSheet,
+        fetchSite: (url) async {
+          if (url.contains('Faculty-DCE')) {
+            dceCalls++;
+            throw const FormatException('Faculty page carries no contacts');
+          }
+          return dcePage;
+        },
+      );
+
+      expect(dceCalls, 2); // tried, retried, then left alone
+      // The other three pages answered, so Engineering is still there —
+      // filed under Electrical Engineering, because only DCE went missing.
+      expect(
+        dir.members.any((m) => m.department == 'Electrical Engineering'),
+        isTrue,
+      );
+      expect(
+        dir.members.any((m) => m.department == 'Computer Engineering'),
+        isFalse,
+      );
+      expect(dir.members.any((m) => m.school == 'School of Computing'), isTrue);
+      expect(dir.fromCache, isFalse);
+
+      // A partial directory is never written to the cache, so the next
+      // open has to try DCE all over again.
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('faculty_directory'), isNull);
+    });
+
+    test('a source that fails once loads on the retry', () async {
+      var dceCalls = 0;
+      final dir = await svc.load(
+        forceRefresh: true,
+        fetchSheet: okSheet,
+        fetchSite: (url) async {
+          if (url.contains('Faculty-DCE') && ++dceCalls == 1) {
+            throw const SocketException('flaky');
+          }
+          return dcePage;
+        },
+      );
+
+      expect(dceCalls, 2);
+      expect(
+        dir.members.any((m) => m.department == 'Computer Engineering'),
+        isTrue,
+      );
+    });
+
+    test('everything down with a cache falls back to the whole cache',
+        () async {
+      final good = await svc.load(
+        forceRefresh: true,
+        fetchSheet: okSheet,
+        fetchSite: okSite,
+      );
+      expect(good.fromCache, isFalse);
+      expect(good.members, isNotEmpty);
+
+      Future<String> dead(String _) async {
+        throw const FormatException('down');
+      }
+
+      final dir = await svc.load(
+        forceRefresh: true,
+        fetchSheet: dead,
+        fetchSite: dead,
+      );
+
+      expect(dir.fromCache, isTrue);
+      expect(dir.members, hasLength(good.members.length));
+      expect(
+        [for (final m in dir.members) m.name],
+        [for (final m in good.members) m.name],
+      );
+    });
+
+    test('everything down with no cache rethrows the first failure',
+        () async {
+      await expectLater(
+        svc.load(
+          forceRefresh: true,
+          fetchSheet: (id) async => throw const FormatException('sheet down'),
+          fetchSite: (url) async => throw const SocketException('site down'),
+        ),
+        throwsA(isA<FormatException>()),
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------
   // The real sheet, when a copy is on this machine. Every assertion here
   // is about the parser reading what the university actually publishes,
   // so the group stands down without it rather than failing.
@@ -179,6 +530,22 @@ Dr. Hasan Mujtaba,,"Professor & Head, FSC ",hasan.mujtaba@nu.edu.pk,C-201 A
 
   final dir = '${Platform.environment['TEMP']}\\opencode';
   final saved = File('$dir\\faculty_computing.csv').existsSync();
+
+  group('the embedded campus trust roots', () {
+    test('parse into real certificates a trust context accepts', () {
+      final pem = svc.debugSectigoPem;
+      // Both halves of the chain the campus site serves: the DV R36
+      // intermediate and the Root R46 Android devices may be missing.
+      expect('-----BEGIN CERTIFICATE-----'.allMatches(pem), hasLength(2));
+
+      final context = SecurityContext(withTrustedRoots: true);
+      expect(
+        () => context.setTrustedCertificatesBytes(utf8.encode(pem)),
+        returnsNormally,
+        reason: 'a malformed PEM would throw here instead of at fetch time',
+      );
+    });
+  });
 
   group('real faculty sheet', () {
     final parsed = svc.debugParseFacultyCsv(

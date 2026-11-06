@@ -33,15 +33,9 @@ class TeachersScreen extends StatefulWidget {
 }
 
 class _TeachersScreenState extends State<TeachersScreen> {
-  /// The school filter. Only rendered once there is more than one school
-  /// to pick between — a row of pills offering one choice is noise, and
-  /// the day a second faculty sheet appears the row appears with it.
-  static const String _schoolAll = '';
-
   static const String _sortDepartment = 'department';
   static const String _sortName = 'name';
 
-  String _school = _schoolAll;
   String _department = '';
   FacultyRank? _rank;
   String _sort = _sortDepartment;
@@ -51,6 +45,11 @@ class _TeachersScreenState extends State<TeachersScreen> {
   bool _loading = true;
   bool _opened = false;
   String? _error;
+
+  /// The failure's own words, under [_error]'s friendly line — so a bad
+  /// load reports *why* instead of only suggesting a connection check
+  /// that would not help.
+  String? _errorDetail;
   List<FacultyMember> _members = const [];
   String _term = '';
   DateTime _fetchedAt = DateTime.fromMillisecondsSinceEpoch(0);
@@ -91,6 +90,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _errorDetail = null;
     });
     try {
       final result = await FacultyDirectoryService.instance.load(
@@ -105,24 +105,26 @@ class _TeachersScreenState extends State<TeachersScreen> {
         _fetchedAt = result.fetchedAt;
         _fromCache = result.fromCache;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         _error = 'Could not load the faculty list.\nCheck your connection.';
+        _errorDetail = _shortCause(e);
       });
     }
   }
 
-  // ================= DERIVED =================
-
-  List<String> get _schools {
-    final seen = <String>{};
-    for (final m in _members) {
-      if (m.school.isNotEmpty) seen.add(m.school);
-    }
-    return seen.toList()..sort();
+  /// The exception as one short line: whitespace collapsed and clipped,
+  /// because it is shown to a reader, not logged for a developer.
+  static String _shortCause(Object e) {
+    var s = e.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+    const max = 160;
+    if (s.length > max) s = '${s.substring(0, max - 1)}…';
+    return s;
   }
+
+  // ================= DERIVED =================
 
   List<String> get _departments {
     final seen = <String>[];
@@ -137,8 +139,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
     final q = _query.trim();
     return [
       for (final m in _members)
-        if ((_school == _schoolAll || m.school == _school) &&
-            (_department.isEmpty || m.department == _department) &&
+        if ((_department.isEmpty || m.department == _department) &&
             (_rank == null || m.rank == _rank) &&
             m.matches(q))
           m,
@@ -208,13 +209,6 @@ class _TeachersScreenState extends State<TeachersScreen> {
       children: [
         _searchField(),
         const SizedBox(height: 12),
-        if (_schools.length > 1) ...[
-          _filterRow('SCHOOL', [
-            _pill('All', _school == _schoolAll, () => setState(() => _school = _schoolAll)),
-            for (final s in _schools)
-              _pill(s, _school == s, () => setState(() => _school = s)),
-          ]),
-        ],
         _filterRow('DEPT', [
           _pill('All', _department.isEmpty, () => setState(() => _department = '')),
           for (final d in _departments)
@@ -344,6 +338,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
       return _buildMessage(
         icon: Icons.cloud_off_rounded,
         message: _error!,
+        detail: _errorDetail,
         actionLabel: 'Retry',
         onAction: () => _load(force: true),
       );
@@ -666,6 +661,7 @@ class _TeachersScreenState extends State<TeachersScreen> {
   Widget _buildMessage({
     required IconData icon,
     required String message,
+    String? detail,
     String? actionLabel,
     VoidCallback? onAction,
   }) {
@@ -686,6 +682,18 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
+            if (detail != null) ...[
+              const SizedBox(height: 10),
+              SelectableText(
+                detail,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
             if (actionLabel != null) ...[
               const SizedBox(height: 16),
               ElevatedButton(
