@@ -1,6 +1,27 @@
 # Session Notes
 
-## Task (CURRENT) — Faculty directory: website sources + office overlay + per-source resilience, error cause display, & campus SSL trust fix
+## Task (CURRENT) — Release 2 to Firebase App Distribution (build 13)
+
+**Status: APK BUILT & VERIFIED. Next: user smoke-tests on the phone, then uploads the APK to App Distribution (only step left).**
+
+**What was done:**
+- `pubspec.yaml` version bumped `1.0.0+1` → **`1.4.0+13`** (Play Console already has versionCode 12, so the new build must be higher; version was previously passed via build flags, now stored in pubspec).
+- `flutter clean` → `flutter pub get` → `flutter analyze` (**No issues found**) → `flutter test` (**209/209 passing**) → `flutter build apk --release` (419s, KGP deprecation warning only — pre-existing).
+- APK verified with aapt: `com.mahad.fastcompanion` **versionCode 13, versionName 1.4.0**, label `Fast Companion` → `build\app\outputs\flutter-apk\app-release.apk` (66.6 MB).
+- Earlier this session: `res/mipmap-*/app_icon_launcher.png` restored (launch icon was broken).
+
+**Upload command (user runs this):**
+```powershell
+firebase appdistribution:distribute "build\app\outputs\flutter-apk\app-release.apk" --app 1:335459427133:android:e3c9832a561d2c4321fb71 --groups "testers" --release-notes "FAST Companion 1.4.0 (build 13): release 2 — icon fix, bug fixes and improvements"
+```
+
+**Deferred from this session (NOT in build 13, candidates for a later release):** 122 placeholder strings, 2 dead theme methods + `Theme.of` misuse in home widgets, `theme_mode.dart` dead code, `custom_card.dart` (73 dupes) refactor. Git repo has 4 commits — user pushes manually.
+
+**Smoke test before upload:** splash → home/timetable/attendance load → notifications + FCM → bottom nav → background/foreground, no crashes.
+
+---
+
+## Task (PREVIOUS) — Faculty directory: website sources + office overlay + per-source resilience, error cause display, & campus SSL trust fix
 
 **Status: DONE (verified). Next: user builds & installs the APK, then confirms on the phone that Engineering/Management load with no handshake errors.**
 
