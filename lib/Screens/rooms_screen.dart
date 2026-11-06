@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../models/room_occupancy.dart';
 import '../services/timetable_service.dart';
 import '../theme/app_colors.dart';
+import '../widgets/tutorial_targets.dart';
 
 /// Which classrooms and labs are free, by building and by day.
 ///
@@ -322,7 +323,10 @@ class _RoomsScreenState extends State<RoomsScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              Expanded(child: _buildBody(free)),
+              Expanded(
+                key: TutorialTargets.resolve('roomsList'),
+                child: _buildBody(free),
+              ),
             ],
           );
         },
@@ -332,6 +336,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
 
   Widget _buildHeader(List<RoomOccupancy> free) {
     return Column(
+      key: TutorialTargets.resolve('roomsFilters'),
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [

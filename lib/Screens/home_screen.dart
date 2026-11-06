@@ -24,6 +24,12 @@ import 'package:fast_companion/services/multi_account_auth_service.dart';
 import 'package:fast_companion/services/profile_photo_cache.dart';
 import 'package:fast_companion/services/home_widget_service.dart';
 import 'package:fast_companion/services/reminder_notification_service.dart';
+import 'package:fast_companion/services/tutorial_service.dart';
+import 'package:fast_companion/widgets/tutorial_overlay.dart';
+import 'package:fast_companion/widgets/tutorial_targets.dart';
+import 'package:fast_companion/models/tutorial_content.dart';
+import 'package:fast_companion/models/tutorial_titles.dart';
+import 'package:fast_companion/models/tutorial_actions.dart';
 import '../app_signals.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -60,6 +66,119 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// the nav bar among them — and a literal repeated in each is a mismatch
   /// waiting to be introduced by reordering the tabs.
   static const int _flexTabIndex = 3;
+
+  /// Tabs whose tutorial has already been seen, loaded once at startup by
+  /// [_loadTutorialState]. A tab absent from this set still has its
+  /// tutorial pending. (Rooms is not tracked here — its tutorial lives in
+  /// WayfindingScreen; Flex lives in FlexScreen and only appears on the
+  /// portal's Marks page.)
+  final Set<int> _seenTutorialTabs = {};
+  bool _tutorialsLoaded = false;
+
+  /// The first-note actions tutorial (star / hold / delete): pending
+  /// until seen in prefs, and only displayed once a refresh takes the
+  /// note list from empty to non-empty while the welcome is done.
+  bool _noteActionsPending = false;
+  bool _noteActionsTriggered = false;
+
+  /// True when the user skipped the notes welcome this session: skip
+  /// means "leave me alone", so the first-note tutorial must not chain
+  /// in behind it. In-memory only — the prefs flag stays unseen so a
+  /// later session can still show it.
+  bool _welcomeSkipped = false;
+
+  Future<void> _loadTutorialState() async {
+    final service = TutorialService.instance;
+    final seen = <int>{};
+    if (await service.hasSeenNotesTutorial()) seen.add(0);
+    if (await service.hasSeenTimetableTutorial()) seen.add(1);
+    final noteActionsPending = !await service.hasSeenNoteActionsTutorial();
+    if (!mounted) return;
+    setState(() {
+      _seenTutorialTabs.addAll(seen);
+      _tutorialsLoaded = true;
+      _noteActionsPending = noteActionsPending;
+    });
+  }
+
+  /// The tutorial for the tab currently on screen, or null when it has
+  /// already been seen (or nothing has loaded yet). One overlay above the
+  /// whole [IndexedStack] rather than one per child, so the tab content
+  /// stays exactly as it was before tutorials existed.
+  Widget? _buildCurrentTabTutorial() {
+    if (!_tutorialsLoaded || _seenTutorialTabs.contains(_navIndex)) {
+      return null;
+    }
+
+    final String title;
+    final List<TutorialStep> steps;
+    switch (_navIndex) {
+      case 0:
+        // The welcome only makes sense once there is an account behind
+        // the notes — show it on the first visit after signing in.
+        if (!_isUserLoggedIn) return null;
+        title = TutorialTitles.notes;
+        steps = TutorialContent.notesTutorialSteps;
+      case 1:
+        title = TutorialTitles.timetable;
+        steps = TutorialContent.timetableTutorialSteps;
+      default:
+        return null;
+    }
+
+    final tabIndex = _navIndex;
+    return TutorialOverlay(
+      title: title,
+      steps: steps,
+      skipText: TutorialActions.skip,
+      onSkip: () {
+        // Skipping the notes welcome also suppresses the first-note
+        // tutorial for this session (skip = leave me alone).
+        if (tabIndex == 0) _welcomeSkipped = true;
+        _completeTutorial(tabIndex);
+      },
+      onDone: () => _completeTutorial(tabIndex),
+    );
+  }
+
+  /// Persist and reflect completion of [tabIndex]'s tutorial.
+  Future<void> _completeTutorial(int tabIndex) async {
+    final service = TutorialService.instance;
+    switch (tabIndex) {
+      case 0:
+        await service.markNotesTutorialAsSeen();
+      case 1:
+        await service.markTimetableTutorialAsSeen();
+    }
+    if (mounted) setState(() => _seenTutorialTabs.add(tabIndex));
+  }
+
+  /// The first-note actions tutorial, or null when it doesn't apply.
+  /// Never overlaps the welcome: the welcome must be done first, and
+  /// only one of the two can be pending for tab 0 at a time anyway.
+  Widget? _buildNoteActionsTutorial() {
+    if (!_tutorialsLoaded ||
+        !_noteActionsPending ||
+        !_noteActionsTriggered ||
+        _welcomeSkipped ||
+        _navIndex != 0 ||
+        !_seenTutorialTabs.contains(0) ||
+        _localNotes.isEmpty) {
+      return null;
+    }
+    return TutorialOverlay(
+      title: TutorialTitles.noteActions,
+      steps: TutorialContent.noteActionsTutorialSteps,
+      skipText: TutorialActions.skip,
+      onSkip: _completeNoteActionsTutorial,
+      onDone: _completeNoteActionsTutorial,
+    );
+  }
+
+  Future<void> _completeNoteActionsTutorial() async {
+    await TutorialService.instance.markNoteActionsTutorialAsSeen();
+    if (mounted) setState(() => _noteActionsPending = false);
+  }
 
   // Live vertical drag distance (px) on the account avatar, for the
   // swipe-up/down-to-switch-account gesture. Negative = swiping up.
@@ -523,6 +642,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _initState() async {
+    // Tutorials: which ones have been seen. Loaded alongside the rest of
+    // startup state — never awaited by the UI, it just flips
+    // `_tutorialsLoaded` when prefs come back.
+    _loadTutorialState();
+
     // Before anything else: a widget whose views the launcher threw away (it
     // does that whenever this app is replaced) would otherwise sit on its
     // "no notes pinned" default forever, since nothing else in the app redraws
@@ -581,7 +705,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final refreshed = await LocalStorageService.loadNotes(
       _activeNotesUid ?? '',
     );
-    if (mounted) setState(() => _localNotes = refreshed);
+    final wasEmpty = _localNotes.isEmpty;
+    if (mounted) {
+      setState(() {
+        _localNotes = refreshed;
+        // First note ever: arm the star/hold/delete walkthrough. It
+        // only displays once the welcome tutorial is done too.
+        if (wasEmpty && refreshed.isNotEmpty && _noteActionsPending) {
+          _noteActionsTriggered = true;
+        }
+      });
+    }
     // Keeps the home screen widget's content up to date with zero extra
     // wiring in EditNoteScreen/TodoScreen/etc — this fires after every
     // edit, delete, and star toggle since they all call _refreshLocalNotes.
@@ -674,7 +808,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildNotesGrid(List<Note> listToRender, int colorOffset) {
+  /// The notes grid. [firstCardKey] is attached to the first card only
+  /// — pass it at just one call site per frame so a GlobalKey is never
+  /// mounted twice (the STARRED and OTHER grids coexist; the empty-
+  /// starred branch returns before they render).
+  Widget _buildNotesGrid(
+    List<Note> listToRender,
+    int colorOffset, {
+    Key? firstCardKey,
+  }) {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -689,6 +831,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Note note = listToRender[index];
 
         return NoteCard(
+          key: index == 0 ? firstCardKey : null,
           note: note,
           color: cardColors[(index + colorOffset) % cardColors.length],
           onDelete: () async {
@@ -1168,12 +1311,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final tabTutorial = _buildCurrentTabTutorial();
+    // Never both at once: the note-actions overlay requires the welcome
+    // to be done, and the welcome only exists while it is pending.
+    final tutorialOverlay =
+        tabTutorial ?? _buildNoteActionsTutorial();
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: IndexedStack(
-          index: _navIndex,
+        child: Stack(
           children: [
+            IndexedStack(
+              index: _navIndex,
+              children: [
             Padding(
               padding: const EdgeInsets.all(18),
               child: Column(
@@ -1184,6 +1334,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     children: [
                       const Text("Notes", style: AppTextStyles.title),
                       GestureDetector(
+                        key: TutorialTargets.resolve('notesAvatar'),
                         behavior: HitTestBehavior.opaque,
                         onTap: () {
                           if (_isUserLoggedIn) {
@@ -1261,6 +1412,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                   const SizedBox(height: 20),
                   TextField(
+                    key: TutorialTargets.resolve('notesSearch'),
                     style: const TextStyle(color: Colors.white, fontSize: 18),
                     controller: searchController,
                     onChanged: (value) {
@@ -1281,6 +1433,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                   const SizedBox(height: 20),
                   Expanded(
+                    key: TutorialTargets.resolve('notesGrid'),
                     child: !_isUserLoggedIn
                         ? Center(
                             child: Container(
@@ -1430,7 +1583,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 return ListView(
                                   padding: EdgeInsets.zero,
                                   children: [
-                                    _buildNotesGrid(reversedNotes, 0),
+                                    _buildNotesGrid(
+                                      reversedNotes,
+                                      0,
+                                      firstCardKey: TutorialTargets.resolve(
+                                        'notesFirstCard',
+                                      ),
+                                    ),
                                     const SizedBox(height: 20),
                                   ],
                                 );
@@ -1474,6 +1633,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   _buildNotesGrid(
                                     otherNotes,
                                     starredNotes.length,
+                                    // New notes are unstarred, so the
+                                    // first note lives in this grid.
+                                    firstCardKey: TutorialTargets.resolve(
+                                      'notesFirstCard',
+                                    ),
                                   ),
                                   const SizedBox(height: 20),
                                 ],
@@ -1491,6 +1655,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             // and keeps both halves mounted so neither loses its place.
             WayfindingScreen(active: _navIndex == 2),
             const FlexScreen(),
+              ],
+            ),
+            if (tutorialOverlay != null)
+              Positioned.fill(child: tutorialOverlay),
           ],
         ),
       ),
@@ -1567,6 +1735,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ),
                 GestureDetector(
+                  key: TutorialTargets.resolve('notesFab'),
                   onTap: () => setState(() => _isMenuOpen = !_isMenuOpen),
                   child: AnimatedRotation(
                     turns: _isMenuOpen ? 0.125 : 0.0,

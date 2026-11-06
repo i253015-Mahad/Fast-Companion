@@ -1,6 +1,122 @@
 # Session Notes
 
-## Task (CURRENT) — Rewrite README.md
+## Task (CURRENT) — Tutorial fixes round 2 (SnackBar FAB tracker, skip suppression, step-swap index reset)
+
+**Status: DONE (verified). Next: user builds & installs the APK.**
+
+**Three user-reported bugs, one shared class of root cause:**
+
+1. **Bug A — spotlight left pointing at empty space after the login SnackBar.** Login-success SnackBar → Scaffold *raises* the FAB above it (SDK `scaffold.dart:1122-1144`), tutorial measured the raised FAB correctly, then the SnackBar dismissed ~4s later — after the old bounded settle re-checks (300ms/+800ms + 5×800ms polls, exhausted at ~1.1s) — FAB dropped → stale hole.
+2. **Bug B — skipping the notes welcome appeared to "advance" instead of stopping.** Skip was correctly wired (`onSkip` → mark seen); but the first-note tutorial became eligible in the *same* rebuild (its trigger fired during welcome via first-note sync), took over the same unkeyed Positioned.fill slot instantly → looked like the step advanced.
+3. **Bug C — second notes tutorial opened at "Step 3 of 3".** Welcome finished via 'Got it!' at index 2; first-note tutorial reused the overlay State (same type+position, no key) → inherited `_localIndex = 2`. Same class of bug across tabs (finish notes step 3 → unseen timetable would open at step 3).
+
+**Fixes:**
+- **`lib/widgets/tutorial_overlay.dart` (done):**
+  - *Tracker replaces bounded settle checks:* fields now `static const _trackInterval = 200ms` + `Timer? _trackTimer` (removed `_settleChecks/_settlePoll/_maxSettlePolls/_settleChecksDone/_settlePollsDone/_settleTimer`). `_startTracking()` (called only from `_resolveCurrentTarget` completion; skipped when targetId null) runs `Timer.periodic(200ms → _trackTarget())`; `_trackTarget` re-resolves with token guard and `setState` **only when rect != _targetGlobal** (static screen = zero rebuilds; late-mount null→rect heals; unmount→null centers). `_resetTracking()` on step change/controller/metrics; cancel in `dispose()` first line.
+  - *Step-swap reset:* `didUpdateWidget` steps branch — when `!identical(oldWidget.steps, widget.steps)` → `_localIndex = 0` before reset+resolve, so a different tutorial taking over the slot starts at step 1.
+- **`lib/screens/home_screen.dart` (done):** new field `bool _welcomeSkipped = false` (in-memory: skip = leave me alone — first-note tutorial suppressed this session; prefs stays unseen); `_buildCurrentTabTutorial` onSkip closure now `() { if (tabIndex == 0) _welcomeSkipped = true; _completeTutorial(tabIndex); }` (onDone unchanged); `_buildNoteActionsTutorial` null-gate adds `|| _welcomeSkipped`.
+
+**Test:** new 6th case in `test/tutorial_overlay_test.dart` — "a different step list restarts the tutorial at step 1": page to step 2, re-pump host with a different const steps list, assert 'gamma step' + 'Step 1 of 2' visible (not inherited index 1).
+
+**Verification:**
+- ✅ `flutter analyze` — No issues found.
+- ✅ `flutter test` — **185/185 passing** (184 + 1 new).
+- `dart format` NOT run (project-wide non-compliance, per AGENTS.md).
+
+**Files:** `lib/widgets/tutorial_overlay.dart`, `lib/screens/home_screen.dart`, `test/tutorial_overlay_test.dart`, `SESSION_NOTES.md`.
+
+---
+
+## Task (PREVIOUS) — Fix Notes step-1 spotlight pointing at the wrong spot (FAB entrance animation)
+
+**Status: DONE (verified). Next: user builds & installs the APK.**
+
+**Reported (user):** "step 1 in notes tutorial does not point to the + button… the tutorial starts before the button appears… The button is actually roughly 50px down and 20px to the right of the current pointing location."
+
+**Root cause:** `TutorialOverlay` measured its target exactly once (post-frame at mount) and never again. The Notes FAB is wrapped by Scaffold's entrance animation (`_FloatingActionButtonTransition` — `ScaleTransition`+`RotationTransition`, ~200ms easeIn) that transforms about the center of the whole speed-dial `Stack` (tall: hidden menu column), so mid-animation the + button's apparent global rect sits up-left of where it settles. The stale rect kept the hole misplaced for the whole step.
+
+**Fix (`lib/widgets/tutorial_overlay.dart` only):**
+- Added `dart:async`; state: `Timer? _settleTimer`, `_settleChecksDone`, `_settlePollsDone` + consts `_settleChecks = [300ms, 800ms]`, `_settlePoll = 800ms`, `_maxSettlePolls = 5`.
+- `_resolveCurrentTarget()` now calls `scheduleFrame()` (settle timers fire between frames; `addPostFrameCallback` alone wouldn't run on an idle app) and, after each successful measure, `_scheduleSettleRecheck(rect, targetId)`: null targetId → no tracking; resolved → up to 2 settle re-measures (300ms, +800ms) so animated-into-place targets re-park; unresolved → poll every 800ms up to 5× so late-loading targets (e.g. teachers list) get their hole once mounted.
+- `_resetSettleSchedule()` (cancels timer + zeroes budgets) on step change: `_setIndex` local branch, `_onControllerChanged`, `didUpdateWidget` (controller/steps change), `didChangeMetrics`. Timer canceled in `dispose()`. Stale-async token guard unchanged.
+
+**Test:** new 5th case in `test/tutorial_overlay_test.dart` — "the spotlight follows a target that settles into place later": host target moved 100px down without telling the overlay; asserts the card travels the same delta once the settle re-check fires. (First run failed only because the assertion compared against the step-counter *text* rect (~69px inside the card) instead of the card top — fixed to compare deltas.)
+
+**Verification:** ✅ `flutter analyze` — No issues found. ✅ `flutter test` — **184/184 passing** (183 + 1 new).
+
+---
+
+## Task (PREVIOUS) — Tutorial refinements (4 changes: rooms→teachers, notes timing, flex underline fix, flex restructure)
+
+**Status: DONE (verified). Next: user builds & installs the APK.** Approved plan (user: "Everything is perfect now. Implement starting with the md update"):
+
+1. **Rooms → Teachers continuation** — move rooms tutorial ownership from `HomeScreen` into `WayfindingScreen` (embedded overlay, gated `widget.active && !seen`, own `TutorialController`). New 7-step flow: [0] roomsFilters → [1] roomsList tap → [2] roomsList auto-refresh → [3] shifter **waitForTrigger** ("Tap Teachers to continue", advanced by `_segment` onTap callback) → [4] first teacher card office pill (`teachersOffice`, keyed at card index 0 only) → [5] first card **waitForTrigger** ("Tap to expand", advanced via new `onCardExpanded` callback on `TeachersScreen`) → [6] `teachersActions` (key inside `if (open)` — only one card expands at a time) explaining Email/Copy + office pill colors. HomeScreen drops tab 2 from `_loadTutorialState`/`_buildCurrentTabTutorial`/`_completeTutorial`.
+2. **Notes timing** — welcome tutorial (case 0) gated on `_isUserLoggedIn` (shows on first visit after login); welcome shrinks to 3 steps (FAB, search, avatar — star/hold step removed). NEW "first note" tutorial: new prefs key `has_seen_note_actions_tutorial`, title 'Your First Note!', 3 steps targeting the first note card (`notesFirstCard`): star=pin to top, hold=pin to home widget, trash=delete. Trigger in `_refreshLocalNotes()` on empty→non-empty when unseen; displayed only when `_navIndex==0` && welcome done (second overlay slot in home Stack). `_buildNotesGrid` gains optional `{Key? firstCardKey}` → index 0 only; passed at the mutually-exclusive call sites (no duplicate GlobalKey; `NoteCard` has `super.key`).
+3. **Yellow underline fix** — root cause: flex tutorial in root OverlayEntry has NO Material ancestor → MaterialApp `_errorTextStyle` (monospace + yellow double underline) leaks via `defaultTextStyle.merge`. Fix: wrap `TutorialOverlay.build` top-level in `Material(type: MaterialType.transparency, child: ...)`.
+4. **Flex restructure** — new 6-step `flexMarksTutorialSteps`: flexBack → flexOpen → flexRefresh → flexAnalytics (explains sheet contents, doesn't open) → flexSignOut → [5] centered (null targetId) Semester Overview explanation. REMOVE: JS resolver (`_resolveTutorialTarget`, `_parseOverviewRect`, `dart:convert`, flexWebView key), wait machinery (`_tutorialController` field+param, `_reinsertTutorialEntry`, waitIndex advance/retreat in `_showAnalytics`), sheet keys (sheetGpa/sheetCourseCard/sheetBars), revert `progressKey` on `FlexMarksAnalyticsWidget`, drop unused registry ids, add teachers/notes ids. KEEP `_syncTutorialEntry` root-entry hosting + dispose + toolbar keys.
+
+**Files:** tutorial_overlay, tutorial_content, tutorial_titles, tutorial_service, tutorial_targets, home_screen, wayfinding_screen, teachers_screen, flex_screen, flex_marks_analytics, SESSION_NOTES. No new deps. Verify: `flutter analyze` + `flutter test` (183 expected).
+
+**Progress:** session-notes ✅ → implementation ✅ → verification ✅.
+
+**Verification (final):**
+- ✅ `flutter analyze` — No issues found (run after main edits and again after tutorial_overlay re-indent).
+- ✅ `flutter test` — 183/183 passing (incl. 4 overlay tests + wayfinding/room tests exercising new code paths).
+- ✅ Leftover grep clean: removed `flex.overviewCard`/`sheetGpa`/`sheetCourseCard`/`sheetBars`/`flexWebView`/`_reinsertTutorialEntry` only appear nowhere; `hasSeenRoomsTutorial` only in service definition + WayfindingScreen usage.
+- ⚠️ `dart format` NOT run: project-wide non-compliance (all touched files fail `--set-exit-if-changed` incl. untouched ones) — avoided churn per AGENTS.md; tutorial_overlay build() body hand-re-indented instead.
+
+---
+
+## Task (PREVIOUS) — Tutorial spotlight: point at features instead of centered box
+
+**Status: DONE (verified).**
+
+Tutorials now dim the screen with a spotlight hole around the exact control being explained (orange glow + arrow from card to hole), instead of a centered box the user has to map to the UI.
+
+### What was built
+- `TutorialStep {text, targetId, waitForTrigger}` — null targetId → centered card (old behavior); waitForTrigger → wait step: no Next, taps pass through the hole so the highlighted control stays tappable.
+- `lib/widgets/tutorial_targets.dart` — named GlobalKey registry (`TutorialTargets.resolve(id)` / `resolveMounted(id)`; unmounted key → centered fallback).
+- `lib/widgets/tutorial_overlay.dart` rewritten: even-odd CustomPaint dimmer + rounded-rect hole + orange arrow; async injectable resolver (default = GlobalKey rect, custom for WebView HTML); card parks below/above the hole (AnimatedPositioned); `TutorialController` keeps step index across host re-mounts; wait-mode uses 4 transparent barrier bars tiling screen-minus-hole; `onWaitAction` fallback button when hole unresolvable; re-resolves on metrics change with stale-async token guard.
+- Step flows: Notes (4: FAB, grid, search, avatar), Timetable (5: school pills, filters, day tabs, list, attendance rings), Rooms (4: filter pills, list, shifter, list), Flex (10): [0] JS-scrolls to purple Semester Overview card (`scrollIntoView` + `getBoundingClientRect`, scale/origin-normalized, 3 retries) → [1-5] Back / Open / Refresh / Analytics / Sign out each spotlighted → [6] wait step on Analytics ("tap the highlighted chart button") → [7-9] sheet steps: Semester GPA, first course card, progress bars (advance on sheet open, retreat to wait step if sheet closed early).
+- Flex hosting: root-level `OverlayEntry` (`rootOverlay: true`) so the tutorial paints above the bottom-sheet route; re-inserted after sheet push; entry removed in new `dispose()`.
+- Keys attached: home_screen (FAB GestureDetector, search TextField, content Expanded, avatar GestureDetector), timetable_screen (school pills, filters via KeyedSubtree, day tabs, list Expanded), rooms_screen (header Column, list Expanded), wayfinding_screen (`_shifter` Container), flex_screen (4 toolbar IconButtons via new `Key? key` on `_action`, analytics Padding, InAppWebView, sheet GPA Container, first course card + `progressKey` on `FlexMarksAnalyticsWidget` progress Row).
+
+### Files created
+`lib/widgets/tutorial_targets.dart`, rewritten `lib/widgets/tutorial_overlay.dart`, rewritten `lib/models/tutorial_content.dart` (+ `TutorialStep`), `test/tutorial_overlay_test.dart`
+
+### Files modified
+`SESSION_NOTES.md`, `lib/screens/home_screen.dart`, `lib/screens/timetable_screen.dart`, `lib/screens/rooms_screen.dart`, `lib/screens/wayfinding_screen.dart`, `lib/screens/flex_screen.dart`, `lib/widgets/flex_marks_analytics.dart`, `lib/models/tutorial_titles.dart` (flexMarks title → 'Welcome to Flex!')
+
+### Verification
+✅ `flutter analyze` — No issues found. ✅ `flutter test` — 183/183 passing (179 existing + 4 new overlay tests: card below target, centered fallback, Next/done paging, wait-step hole tap-through vs outside block).
+
+---
+
+## Task (PREVIOUS) — Add onboarding tutorial system for new users
+
+**Status: DONE (verified).** Step-by-step tutorial overlays shown once per feature for new users.
+
+### What was built
+- **Notes / Timetable / Rooms tabs:** each shows its own overlay the first time the tab opens. Overlay = dimmed barrier + centered card (title, "Step i of n", step text, page dots, Skip / Next → Got it!). Bottom nav stays usable.
+- **Flex tab:** tutorial appears **only on the Marks page** (URL contains `studentmarks`) and explains the injected purple "Semester Overview" card at the bottom, the orange chart button in the toolbar, the Marks Analytics sheet (Semester GPA, per-course score vs class avg, grade badge, attained vs remaining weightage, progress bars).
+
+### Files created
+- `lib/services/tutorial_service.dart` — singleton + SharedPreferences persistence (keys `has_seen_notes_timetable_rooms_flex_marks_tutorial` variants), `hasSeen*/mark*AsSeen()` per feature, `resetAllTutorials()`
+- `lib/widgets/tutorial_overlay.dart` — reusable `TutorialOverlay` (ModalBarrier + animated card, internal single-step paging: title, steps, skipText, nextText, doneText, onSkip, onDone)
+- `lib/models/tutorial_content.dart` — `TutorialContent` with the 4 step lists (notes/timetable/rooms/flexMarks)
+- `lib/models/tutorial_titles.dart` — `TutorialTitles` (Welcome to Notes!/Timetable/Rooms/Marks Analytics!)
+- `lib/models/tutorial_actions.dart` — `TutorialActions` (Skip / Next / Got it!)
+
+### Files modified
+- `lib/screens/home_screen.dart` — `_seenTutorialTabs` set + `_loadTutorialState()` (fire-and-forget in `_initState()`), `_buildCurrentTabTutorial()` switches on `_navIndex` (0/1/2 only; Flex excluded), single overlay `Positioned.fill` over the IndexedStack in a `Stack`, `_completeTutorial(tabIndex)` marks seen in prefs
+- `lib/screens/flex_screen.dart` — `_shouldShowMarksTutorial` + `_loadMarksTutorialStatus()` in initState; `build()` is a Stack where the overlay renders only when `_shouldShowMarksTutorial && _onMarksPage`; `_completeMarksTutorial()` persists and hides
+
+### Verification
+✅ `flutter analyze` — No issues found. ✅ `flutter test` — 179/179 passing.
+
+---
+
+## Task (PREVIOUS) — Rewrite README.md
 
 **Status: DONE.** Replaced the default Flutter template in `README.md` with full project documentation: features (notes/timetable/rooms/FLEX portal/widgets/reminders/auth), project structure, services table, setup/run/build commands, testing (179 tests), repo docs (PROJECT_MAP/SESSION_NOTES/AGENTS), and conventions (secrets policy, allowBackup, Firebase config rules). Docs-only change — no code touched, no analyze/test needed. Next: user reviews README; otherwise resume prior backlog.
 

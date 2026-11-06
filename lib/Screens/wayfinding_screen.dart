@@ -2,7 +2,13 @@
 
 import 'package:flutter/material.dart';
 
+import '../models/tutorial_actions.dart';
+import '../models/tutorial_content.dart';
+import '../models/tutorial_titles.dart';
+import '../services/tutorial_service.dart';
 import '../theme/app_colors.dart';
+import '../widgets/tutorial_overlay.dart';
+import '../widgets/tutorial_targets.dart';
 import 'rooms_screen.dart';
 import 'teachers_screen.dart';
 
@@ -39,8 +45,76 @@ class _WayfindingScreenState extends State<WayfindingScreen> {
   /// Which half is in front.
   bool _showTeachers = false;
 
+  /// Rooms tutorial state. Owned here (not in HomeScreen) so it can
+  /// keep running across the Rooms → Teachers switch: the controller
+  /// holds the step index, the two wait steps are advanced by the
+  /// shifter tap and the card-expand tap below.
+  bool _tutorialLoaded = false;
+  bool _tutorialPending = false;
+  final TutorialController _tutorialController = TutorialController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTutorialStatus();
+  }
+
+  Future<void> _loadTutorialStatus() async {
+    final pending = !await TutorialService.instance.hasSeenRoomsTutorial();
+    if (!mounted) return;
+    setState(() {
+      _tutorialLoaded = true;
+      _tutorialPending = pending;
+    });
+  }
+
+  /// Advances past the wait step whose [targetId] matches, but only if
+  /// the tutorial is actually sitting on it — a stray trigger after
+  /// Skip/Done must not jump a finished walkthrough.
+  void _advancePastWait(String targetId) {
+    if (!_tutorialPending) return;
+    final steps = TutorialContent.roomsTutorialSteps;
+    final waitIndex = steps
+        .indexWhere((s) => s.waitForTrigger && s.targetId == targetId);
+    if (waitIndex < 0) return;
+    if (_tutorialController.index == waitIndex) {
+      _tutorialController.goTo(waitIndex + 1);
+    }
+  }
+
+  Future<void> _completeTutorial() async {
+    await TutorialService.instance.markRoomsTutorialAsSeen();
+    if (mounted) setState(() => _tutorialPending = false);
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Only while this tab is on screen; unmounting on tab switch is
+    // safe because the step index lives in the controller.
+    final tutorial = widget.active && _tutorialLoaded && _tutorialPending
+        ? TutorialOverlay(
+            title: TutorialTitles.rooms,
+            steps: TutorialContent.roomsTutorialSteps,
+            skipText: TutorialActions.skip,
+            controller: _tutorialController,
+            onSkip: _completeTutorial,
+            onDone: _completeTutorial,
+          )
+        : null;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _buildShells(),
+        if (tutorial != null)
+          Positioned.fill(
+            child: SafeArea(child: tutorial),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildShells() {
     return Padding(
       padding: const EdgeInsets.all(18),
       child: Column(
@@ -72,6 +146,7 @@ class _WayfindingScreenState extends State<WayfindingScreen> {
                     curve: Curves.easeOut,
                     child: TeachersScreen(
                       active: widget.active && _showTeachers,
+                      onCardExpanded: () => _advancePastWait('teachersCard'),
                     ),
                   ),
                 ),
@@ -92,6 +167,7 @@ class _WayfindingScreenState extends State<WayfindingScreen> {
   /// everywhere else are not [ChoiceChip]s.
   Widget _shifter() {
     return Container(
+      key: TutorialTargets.resolve('roomsShifter'),
       height: 46,
       decoration: BoxDecoration(
         color: AppColors.navBar,
@@ -132,6 +208,9 @@ class _WayfindingScreenState extends State<WayfindingScreen> {
               _segment('Teachers', selected: _showTeachers, onTap: () {
                 if (_showTeachers) return;
                 setState(() => _showTeachers = true);
+                // Hands the tutorial over from the shifter step to the
+                // faculty-directory steps.
+                _advancePastWait('roomsShifter');
               }),
             ],
           ),

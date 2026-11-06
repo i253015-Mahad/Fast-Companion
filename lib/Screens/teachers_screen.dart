@@ -7,13 +7,14 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/faculty_member.dart';
 import '../services/faculty_directory_service.dart';
 import '../theme/app_colors.dart';
+import '../widgets/tutorial_targets.dart';
 
 /// Who teaches where, and how to reach them.
 ///
 /// The second half of the wayfinding tab: the rooms list answers "where
 /// is a free lab", this answers "where is Dr X".
 class TeachersScreen extends StatefulWidget {
-  const TeachersScreen({super.key, required this.active});
+  const TeachersScreen({super.key, required this.active, this.onCardExpanded});
 
   /// Whether this tab is the one on screen.
   ///
@@ -21,6 +22,11 @@ class TeachersScreen extends StatefulWidget {
   /// are all built at startup, so without this the directory would
   /// download a sheet nobody had asked for.
   final bool active;
+
+  /// Fired when a card is opened (not when it is closed) — the rooms
+  /// tutorial waits on this to step from "tap a teacher" to explaining
+  /// the Email / Copy actions.
+  final VoidCallback? onCardExpanded;
 
   @override
   State<TeachersScreen> createState() => _TeachersScreenState();
@@ -345,6 +351,9 @@ class _TeachersScreenState extends State<TeachersScreen> {
 
     final groups = _groups();
     final total = _visible.length;
+    // The card the tutorial spotlights: the first one actually rendered.
+    final flat = <FacultyMember>[for (final g in groups) ...g.$2];
+    final firstCard = flat.isEmpty ? null : flat.first;
 
     return RefreshIndicator(
       color: AppColors.cardOrange,
@@ -369,7 +378,8 @@ class _TeachersScreenState extends State<TeachersScreen> {
           else ...[
             for (final (header, people) in groups) ...[
               if (header.isNotEmpty) _groupHeader(header),
-              for (final m in people) _buildCard(m),
+              for (final m in people)
+                _buildCard(m, first: identical(m, firstCard)),
             ],
           ],
           const SizedBox(height: 8),
@@ -418,14 +428,18 @@ class _TeachersScreenState extends State<TeachersScreen> {
     );
   }
 
-  Widget _buildCard(FacultyMember m) {
+  Widget _buildCard(FacultyMember m, {required bool first}) {
     final open = _expanded == mKey(m);
 
     return Padding(
+      key: first ? TutorialTargets.resolve('teachersCard') : null,
       padding: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        onTap: () => setState(() => _expanded = open ? null : mKey(m)),
+        onTap: () => setState(() {
+          _expanded = open ? null : mKey(m);
+          if (!open) widget.onCardExpanded?.call();
+        }),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOut,
@@ -446,7 +460,13 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 children: [
                   Expanded(child: _nameLine(m)),
                   const SizedBox(width: 10),
-                  _officePill(m),
+                  if (first)
+                    KeyedSubtree(
+                      key: TutorialTargets.resolve('teachersOffice'),
+                      child: _officePill(m),
+                    )
+                  else
+                    _officePill(m),
                 ],
               ),
               if (m.designation.isNotEmpty) ...[
@@ -467,7 +487,12 @@ class _TeachersScreenState extends State<TeachersScreen> {
                 const SizedBox(height: 12),
                 const Divider(color: Colors.white24, height: 1),
                 const SizedBox(height: 10),
-                _actions(m),
+                // Only one card is ever open, so this key never has
+                // two mounted widgets at once.
+                KeyedSubtree(
+                  key: TutorialTargets.resolve('teachersActions'),
+                  child: _actions(m),
+                ),
               ],
             ],
           ),

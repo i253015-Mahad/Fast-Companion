@@ -13,6 +13,7 @@ import '../services/flex_attendance_service.dart';
 import '../services/flex_session_service.dart';
 import '../services/timetable_service.dart';
 import '../widgets/attendance_ring.dart';
+import '../widgets/tutorial_targets.dart';
 
 /// Public, day-by-day timetable browser for the three FAST ISB schools.
 ///
@@ -436,7 +437,11 @@ class _TimetableScreenState extends State<TimetableScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _buildHeaderTop(),
-                      _buildFilterBlock(departments, batches, sections),
+                      KeyedSubtree(
+                        key: TutorialTargets.resolve('timetableFilters'),
+                        child: _buildFilterBlock(
+                            departments, batches, sections),
+                      ),
                       if (!_loading && _error == null && result != null) ...[
                         _buildDayTabs(filtered),
                         const SizedBox(height: 4),
@@ -446,7 +451,10 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              Expanded(child: _buildBody(result)),
+              Expanded(
+                key: TutorialTargets.resolve('timetableList'),
+                child: _buildBody(result),
+              ),
             ],
           );
         },
@@ -556,6 +564,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
   Widget _buildSchoolChips() {
     return SingleChildScrollView(
+      key: TutorialTargets.resolve('timetableSchoolPills'),
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
@@ -727,6 +736,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
     }
 
     return SingleChildScrollView(
+      key: TutorialTargets.resolve('timetableDayTabs'),
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [

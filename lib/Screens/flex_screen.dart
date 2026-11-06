@@ -9,9 +9,15 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/flex_marks_model.dart';
 import '../services/flex_marks_enhancer_service.dart';
 import '../services/flex_session_service.dart';
+import '../services/tutorial_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/flex_marks_analytics.dart';
+import '../widgets/tutorial_overlay.dart';
+import '../models/tutorial_content.dart';
+import '../models/tutorial_titles.dart';
+import '../models/tutorial_actions.dart';
+import '../widgets/tutorial_targets.dart';
 
 /// The Flex tab: the university's own student portal, embedded.
 ///
@@ -234,6 +240,12 @@ class _FlexScreenState extends State<FlexScreen> {
 
   bool _failed = false;
 
+  bool _shouldShowMarksTutorial = false;
+
+  /// Root-level entry holding the tutorial; mounted exactly while the
+  /// tutorial should show, above every route including the sheet.
+  OverlayEntry? _tutorialEntry;
+
   bool get _onLoginPage {
     final path = Uri.tryParse(_url)?.path.toLowerCase() ?? '';
     return path == '/login' || path.startsWith('/login/');
@@ -248,71 +260,136 @@ class _FlexScreenState extends State<FlexScreen> {
     _pullToRefresh = PullToRefreshController(
       onRefresh: () => _controller?.reload(),
     );
+    _loadMarksTutorialStatus();
+  }
+
+  @override
+  void dispose() {
+    _tutorialEntry?.remove();
+    _tutorialEntry = null;
+    super.dispose();
   }
 
   // ================= BUILD =================
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Stack(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 18, 6, 0),
-          child: Row(
-            children: [
-              const Expanded(child: Text('Flex', style: AppTextStyles.title)),
-              if (_canGoBack)
-                _action(
-                  tooltip: 'Back',
-                  icon: Icons.arrow_back_rounded,
-                  onTap: () => _controller?.goBack(),
-                ),
-              _action(
-                tooltip: 'Open in browser',
-                icon: Icons.open_in_new_rounded,
-                onTap: _openInBrowser,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 6, 0),
+              child: Row(
+                children: [
+                  const Expanded(child: Text('Flex', style: AppTextStyles.title)),
+                  if (_canGoBack)
+                    _action(
+                      key: TutorialTargets.resolve('flexBack'),
+                      tooltip: 'Back',
+                      icon: Icons.arrow_back_rounded,
+                      onTap: () => _controller?.goBack(),
+                    ),
+                  _action(
+                    key: TutorialTargets.resolve('flexOpen'),
+                    tooltip: 'Open in browser',
+                    icon: Icons.open_in_new_rounded,
+                    onTap: _openInBrowser,
+                  ),
+                  _action(
+                    key: TutorialTargets.resolve('flexRefresh'),
+                    tooltip: 'Refresh',
+                    icon: Icons.refresh_rounded,
+                    onTap: () => _controller?.reload(),
+                  ),
+                  if (_onMarksPage) _analyticsAction(),
+                  if (!_onLoginPage)
+                    _action(
+                      key: TutorialTargets.resolve('flexSignOut'),
+                      tooltip: 'Sign out',
+                      icon: Icons.logout_rounded,
+                      color: AppColors.cardOrange,
+                      onTap: _confirmSignOut,
+                    ),
+                ],
               ),
-              _action(
-                tooltip: 'Refresh',
-                icon: Icons.refresh_rounded,
-                onTap: () => _controller?.reload(),
-              ),
-              if (_onMarksPage) _analyticsAction(),
-              if (!_onLoginPage)
-                _action(
-                  tooltip: 'Sign out',
-                  icon: Icons.logout_rounded,
-                  color: AppColors.cardOrange,
-                  onTap: _confirmSignOut,
-                ),
-            ],
-          ),
-        ),
-        if (_loading)
-          const Padding(
-            padding: EdgeInsets.only(top: 4),
-            child: LinearProgressIndicator(
-              color: AppColors.cardOrange,
-              backgroundColor: AppColors.navBar,
-              minHeight: 3,
             ),
-          )
-        else
-          const SizedBox(height: 11),
-        const SizedBox(height: 4),
-        Expanded(child: _buildBody()),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: LinearProgressIndicator(
+                  color: AppColors.cardOrange,
+                  backgroundColor: AppColors.navBar,
+                  minHeight: 3,
+                ),
+              )
+            else
+              const SizedBox(height: 11),
+            const SizedBox(height: 4),
+            Expanded(child: _buildBody()),
+          ],
+        ),
       ],
     );
   }
 
+  /// Loads whether the Marks-page tutorial still needs showing. Called
+  /// once from [initState].
+  Future<void> _loadMarksTutorialStatus() async {
+    final hasSeen = await TutorialService.instance.hasSeenFlexMarksTutorial();
+    if (!mounted) return;
+    setState(() => _shouldShowMarksTutorial = !hasSeen);
+    _syncTutorialEntry();
+  }
+
+  Future<void> _completeMarksTutorial() async {
+    await TutorialService.instance.markFlexMarksTutorialAsSeen();
+    if (mounted) {
+      setState(() {
+        _shouldShowMarksTutorial = false;
+      });
+      _syncTutorialEntry();
+    }
+  }
+
+  /// Keeps a root [OverlayEntry] with the tutorial mounted exactly while
+  /// it should show — not seen yet AND on the Marks page. Root-level so
+  /// it paints above every route, the analytics sheet included.
+  void _syncTutorialEntry() {
+    if (!mounted) return;
+    final shouldShow = _shouldShowMarksTutorial && _onMarksPage;
+    if (shouldShow && _tutorialEntry == null) {
+      final entry = OverlayEntry(builder: (_) => _buildTutorialOverlay());
+      _tutorialEntry = entry;
+      Overlay.of(context, rootOverlay: true).insert(entry);
+    } else if (!shouldShow && _tutorialEntry != null) {
+      _tutorialEntry?.remove();
+      _tutorialEntry = null;
+    }
+  }
+
+  Widget _buildTutorialOverlay() {
+    return SafeArea(
+      child: TutorialOverlay(
+        title: TutorialTitles.flexMarks,
+        steps: TutorialContent.flexMarksTutorialSteps,
+        skipText: TutorialActions.skip,
+        onSkip: _completeMarksTutorial,
+        onDone: _completeMarksTutorial,
+      ),
+    );
+  }
+
   Widget _action({
+    Key? key,
     required String tooltip,
     required IconData icon,
     required VoidCallback onTap,
     Color color = Colors.white,
   }) {
     return IconButton(
+      key: key,
       tooltip: tooltip,
       onPressed: onTap,
       icon: Icon(icon, color: color),
@@ -387,7 +464,8 @@ class _FlexScreenState extends State<FlexScreen> {
                       child: ListView.builder(
                         padding: const EdgeInsets.only(top: 8, bottom: 16),
                         itemCount: courses.length,
-                        itemBuilder: (_, index) => FlexMarksAnalyticsWidget(marks: courses[index]),
+                        itemBuilder: (_, index) =>
+                            FlexMarksAnalyticsWidget(marks: courses[index]),
                       ),
                     ),
                   ],
@@ -399,6 +477,7 @@ class _FlexScreenState extends State<FlexScreen> {
 
   Widget _analyticsAction() {
     return Padding(
+      key: TutorialTargets.resolve('flexAnalytics'),
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Tooltip(
         message: 'Marks analytics',
@@ -460,6 +539,7 @@ class _FlexScreenState extends State<FlexScreen> {
                 _loading = true;
                 if (url != null) _url = url.toString();
               });
+              _syncTutorialEntry();
             }
           },
           onLoadStop: (controller, url) async {
@@ -470,6 +550,7 @@ class _FlexScreenState extends State<FlexScreen> {
                 _failed = false;
                 if (url != null) _url = url.toString();
               });
+              _syncTutorialEntry();
             }
             await _updateBackAvailability(controller);
             await FlexSessionService.instance.adoptFromWebView(controller);
